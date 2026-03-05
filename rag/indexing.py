@@ -28,6 +28,7 @@ from config.constants import (
     MAX_CONTENT_LENGTH
 )
 from config.logging_config import get_logger
+from rag.qdrant_provider import get_qdrant_client
 from rag.utils import (
     chunk_text, 
     generate_document_id, 
@@ -53,13 +54,9 @@ class RAGIndexer:
     def _initialize_clients(self):
         """Initialize API clients for Qdrant, MongoDB, and OpenAI."""
         logger.info("Initializing RAG Indexer clients...")
-        
-        # Qdrant client for vector storage
-        self.qdrant_client = QdrantClient(
-            url=settings.qdrant_url,
-            api_key=settings.qdrant_api_key,
-            timeout=30
-        )
+
+        # Shared Qdrant client for vector storage
+        self.qdrant_client = get_qdrant_client()
         
         # MongoDB async client for metadata
         self.mongo_client = AsyncIOMotorClient(settings.mongo_uri)
@@ -379,7 +376,6 @@ class RAGIndexer:
     def close(self):
         """Close all client connections."""
         try:
-            self.qdrant_client.close()
             self.mongo_client.close()
             logger.info("All connections closed")
         except Exception as e:

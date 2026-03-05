@@ -6,6 +6,7 @@ Handles query processing, semantic search, and response generation.
 import asyncio
 from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime
+import re
 
 from openai import AsyncOpenAI
 from qdrant_client import QdrantClient
@@ -25,6 +26,7 @@ from config.constants import (
     CHAT_HISTORY_COLLECTION
 )
 from config.logging_config import get_logger
+from rag.qdrant_provider import get_qdrant_client
 from rag.utils import truncate_text, get_timestamp
 
 logger = get_logger(__name__)
@@ -43,13 +45,9 @@ class RAGRetriever:
     def _initialize_clients(self):
         """Initialize API clients."""
         logger.info("Initializing RAG Retriever clients...")
-        
-        # Qdrant client for vector search
-        self.qdrant_client = QdrantClient(
-            url=settings.qdrant_url,
-            api_key=settings.qdrant_api_key,
-            timeout=30
-        )
+
+        # Shared Qdrant client for vector search
+        self.qdrant_client = get_qdrant_client()
         
         # MongoDB async client for chat history
         self.mongo_client = AsyncIOMotorClient(settings.mongo_uri)
@@ -200,8 +198,46 @@ class RAGRetriever:
             return answer
             
         except Exception as e:
+            error_text = str(e)
+
+            # Graceful retry for OpenRouter insufficient credits errors
+            if "Error code: 402" in error_text:
+                affordable_tokens = self._extract_affordable_tokens(error_text)
+                if affordable_tokens and affordable_tokens > 32:
+                    retry_tokens = min(settings.max_tokens, affordable_tokens)
+                    logger.warning(
+                        f"Retrying LLM response with reduced max_tokens={retry_tokens} due to credits limit"
+                    )
+                    try:
+                        retry_response = await self.openai_client.chat.completions.create(
+                            model=settings.llm_model,
+                            messages=[
+                                {"role": "system", "content": sys_prompt},
+                                {"role": "user", "content": user_prompt}
+                            ],
+                            temperature=settings.temperature,
+                            max_tokens=retry_tokens
+                        )
+
+                        retry_answer = retry_response.choices[0].message.content
+                        logger.debug("Response generated successfully after reduced-token retry")
+                        return retry_answer
+                    except Exception as retry_error:
+                        logger.error(f"Retry with reduced tokens also failed: {retry_error}")
+
             logger.error(f"Error generating LLM response: {e}")
             raise
+
+    def _extract_affordable_tokens(self, error_text: str) -> Optional[int]:
+        """Extract affordable token count from OpenRouter 402 error text."""
+        match = re.search(r"can only afford\s+(\d+)", error_text)
+        if not match:
+            return None
+
+        try:
+            return int(match.group(1))
+        except ValueError:
+            return None
     
     async def query(
         self, 
@@ -390,7 +426,6 @@ class RAGRetriever:
     def close(self):
         """Close all client connections."""
         try:
-            self.qdrant_client.close()
             self.mongo_client.close()
             logger.info("Retriever connections closed")
         except Exception as e:

@@ -11,6 +11,8 @@ import asyncio
 from datetime import datetime
 import uuid
 import io
+import httpx
+from bs4 import BeautifulSoup
 
 # Optional dependencies for file extraction
 try:
@@ -378,3 +380,41 @@ def extract_text_from_docx(file_bytes: bytes) -> str:
         return docx2txt.process(io.BytesIO(file_bytes)).strip()
     except Exception as e:
         raise ValueError(f"Failed to extract text from DOCX: {str(e)}")
+
+
+async def extract_text_from_url(url: str) -> str:
+    """
+    Fetch a URL and extract clean text content from it.
+    
+    Args:
+        url: URL to fetch
+        
+    Returns:
+        Extracted text content
+    """
+    async with httpx.AsyncClient(follow_redirects=True, timeout=15.0) as client:
+        try:
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+            }
+            response = await client.get(url, headers=headers)
+            response.raise_for_status()
+            
+            # Use BeautifulSoup to parse HTML and extract text
+            soup = BeautifulSoup(response.text, 'html.parser')
+            
+            # Remove script and style elements
+            for script_or_style in soup(["script", "style", "nav", "header", "footer", "aside"]):
+                script_or_style.decompose()
+            
+            # Get text
+            text = soup.get_text(separator=' ')
+            
+            # Clean up whitespace
+            lines = (line.strip() for line in text.splitlines())
+            chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
+            text = '\n'.join(chunk for chunk in chunks if chunk)
+            
+            return text.strip()
+        except Exception as e:
+            raise ValueError(f"Failed to extract text from URL {url}: {str(e)}")

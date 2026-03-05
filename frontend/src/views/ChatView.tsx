@@ -245,13 +245,30 @@ const ChatView: React.FC = () => {
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
 
+    const currentQuery = query;
     setMessages(prev => [...prev, userMsg]);
     setQuery('');
     setIsThinking(true);
 
+    // URL Detection and Auto-Indexing
+    const urlPattern = /(https?:\/\/[^\s]+)/g;
+    const urls = currentQuery.match(urlPattern);
+    
+    if (urls && urls.length > 0) {
+      const url = urls[0];
+      showToast('Accessing link content...', 'info');
+      try {
+        await api.indexUrl(url);
+        // No success toast here to keep it non-intrusive, 
+        // the AI will use the content in its response
+      } catch (err) {
+        console.warn('Auto-indexing URL failed:', err);
+      }
+    }
+
     try {
-      const response: QueryResponse = await api.query({
-        query: userMsg.content,
+      const response = await api.query({
+        query: currentQuery,
         session_id: sessionId,
         top_k: 5
       });

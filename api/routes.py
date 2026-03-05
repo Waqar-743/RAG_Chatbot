@@ -23,7 +23,7 @@ from api.models import (
 )
 from rag.indexing import RAGIndexer
 from rag.retrieval import RAGRetriever
-from rag.utils import extract_text_from_pdf, extract_text_from_docx
+from rag.utils import extract_text_from_pdf, extract_text_from_docx, extract_text_from_url
 from config.logging_config import get_logger
 from config.settings import settings
 
@@ -290,13 +290,59 @@ async def upload_file(file: UploadFile = File(...)):
         )
 
 
+@router.post(
+    "/index/url",
+    tags=["Indexing"],
+    summary="Fetch and index a URL"
+)
+async def index_url(url: str):
+    """
+    Fetch content from a URL, extract text, and index it.
+    """
+    try:
+        logger.info(f"Indexing URL: {url}")
+        
+        # 1. Extract text
+        text = await extract_text_from_url(url)
+        
+        if not text or len(text) < 50:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Could not extract sufficient text from the provided URL."
+            )
+        
+        # 2. Create document input
+        doc_input = {
+            "source": url,
+            "content": text,
+            "url": url,
+            "metadata": {
+                "indexed_via": "web_search_direct",
+                "timestamp": datetime.utcnow().isoformat()
+            }
+        }
+        
+        # 3. Index
+        indexer = get_indexer()
+        result = await indexer.index_documents([doc_input])
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"URL indexing error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
+
 @router.delete(
     "/documents/{document_id}",
     tags=["Indexing"],
     summary="Delete a document"
 )
 async def delete_document(document_id: str):
-    """Delete a document and all its chunks from the index."""
+    """Delete a document and its chunks from the system."""
     try:
         indexer = get_indexer()
         result = await indexer.delete_document(document_id)

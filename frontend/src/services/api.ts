@@ -204,6 +204,20 @@ export const api = {
   },
 
   /**
+   * Fetch and index a URL
+   */
+  async indexUrl(url: string): Promise<IndexResponse> {
+    try {
+      const response = await apiClient.post<IndexResponse>('/index/url', null, {
+        params: { url },
+      });
+      return response.data;
+    } catch (error) {
+      throw handleApiError(error as AxiosError);
+    }
+  },
+
+  /**
    * Delete a document
    */
   async deleteDocument(documentId: string): Promise<{ status: string; message: string }> {

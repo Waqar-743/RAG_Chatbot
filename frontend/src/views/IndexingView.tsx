@@ -201,6 +201,61 @@ const IndexingView: React.FC = () => {
     }
   };
 
+  const handleFetchUrl = async () => {
+    if (!wikiUrl.trim()) {
+      showToast('Please enter a URL first', 'error');
+      return;
+    }
+
+    if (!wikiUrl.startsWith('http')) {
+      showToast('Please enter a valid URL starting with http:// or https://', 'error');
+      return;
+    }
+
+    setIsIndexing(true);
+    setPipelineStage('received');
+    setProgressPercent(0);
+    showToast(`Accessing URL: ${wikiUrl}`, 'info');
+
+    const startTime = Date.now();
+    const animationPromise = runPipelineAnimation(true);
+
+    try {
+      const response = await api.indexUrl(wikiUrl);
+      
+      await animationPromise;
+      const duration = ((Date.now() - startTime) / 1000).toFixed(1);
+
+      if (response.successful > 0) {
+        showToast(`Successfully indexed content from URL!`, 'success');
+        
+        addActivityLog({
+          name: wikiUrl.replace(/^https?:\/\//, '').substring(0, 30) + '...',
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          duration: `${duration}s`,
+          status: 'SUCCESS',
+          icon: 'language',
+          chunks: response.total_chunks
+        });
+
+        setWikiUrl('');
+        await fetchStats();
+      } else {
+        setPipelineStage('error');
+        showToast('Failed to index URL: ' + (response.details[0]?.message || 'Unknown error'), 'error');
+      }
+    } catch (error) {
+      setPipelineStage('error');
+      showToast(`Error: ${error instanceof Error ? error.message : 'URL access failed'}`, 'error');
+    } finally {
+      setIsIndexing(false);
+      setTimeout(() => {
+        setPipelineStage('idle');
+        setProgressPercent(0);
+      }, 2000);
+    }
+  };
+
   const exportActivityLog = () => {
     if (activityLogs.length === 0) {
       showToast('No activity to export', 'info');
@@ -338,9 +393,18 @@ const IndexingView: React.FC = () => {
                     <button 
                       onClick={() => wikiUrl && window.open(wikiUrl, '_blank')}
                       disabled={!wikiUrl}
+                      title="Open URL"
                       className="bg-[#283039] text-primary p-2 rounded-lg hover:bg-slate-700 disabled:opacity-50"
                     >
                       <span className="material-symbols-outlined text-sm">open_in_new</span>
+                    </button>
+                    <button 
+                      onClick={handleFetchUrl}
+                      disabled={!wikiUrl || isIndexing}
+                      title="Fetch & Index URL content"
+                      className="bg-primary/20 text-primary px-3 py-2 rounded-lg hover:bg-primary/30 disabled:opacity-50 text-[10px] font-bold uppercase transition-colors"
+                    >
+                      {isIndexing ? 'Fetching...' : 'Fetch & Index'}
                     </button>
                   </div>
                 </div>
