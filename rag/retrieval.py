@@ -1,432 +1,483 @@
 """
-RAG Retrieval Module.
-Handles query processing, semantic search, and response generation.
+RAG Retrieval — query → embed → search → rerank → guard → generate.
+
+Pass 2 hardening:
+- Tenacity retries with exponential backoff on every external call.
+- Optional HyDE query rewriting (settings.enable_hyde).
+- MMR reranking with overfetch (settings.enable_mmr, settings.overfetch_multiplier).
+- Hallucination guard: if the best chunk scores below
+  settings.hallucination_guard_score, return DEFAULT_NO_ANSWER without
+  hitting the LLM.
+- Stage-level timing telemetry on every query.
 """
 
-import asyncio
-from typing import List, Dict, Any, Optional, Tuple
-from datetime import datetime
+from __future__ import annotations
+
 import re
+import time
+from datetime import datetime
+from typing import Any, Dict, List, Optional
 
-from openai import AsyncOpenAI
-from qdrant_client import QdrantClient
-from qdrant_client.models import Filter, FieldCondition, MatchValue
 from motor.motor_asyncio import AsyncIOMotorClient
+from openai import (
+    APIConnectionError,
+    APIError,
+    APITimeoutError,
+    AsyncOpenAI,
+    InternalServerError,
+    RateLimitError,
+)
+from qdrant_client import QdrantClient  # re-exported for test patching
+from qdrant_client.models import FieldCondition, Filter, MatchValue
+from tenacity import (
+    AsyncRetrying,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
 
-from config.settings import settings
 from config.constants import (
-    VECTOR_DIMENSION,
+    CHAT_HISTORY_COLLECTION,
+    DEFAULT_NO_ANSWER,
+    HYDE_PROMPT_TEMPLATE,
+    LLM_TIMEOUT,
     MAX_SOURCES_RETURNED,
     MIN_SIMILARITY_SCORE,
-    DEFAULT_NO_ANSWER,
-    SYSTEM_PROMPT,
     RAG_PROMPT_TEMPLATE,
-    LLM_TIMEOUT,
-    EMBEDDING_TIMEOUT,
-    CHAT_HISTORY_COLLECTION
+    SYSTEM_PROMPT,
 )
 from config.logging_config import get_logger
+from config.settings import settings
 from rag.qdrant_provider import get_qdrant_client
-from rag.utils import truncate_text, get_timestamp
+from rag.rerank import mmr_rerank
+from rag.utils import truncate_text
 
 logger = get_logger(__name__)
 
 
-class RAGRetriever:
-    """
-    Document Retriever and Response Generator for RAG system.
-    Handles semantic search and LLM-powered response generation.
-    """
-    
-    def __init__(self):
-        """Initialize the RAG Retriever with necessary clients."""
-        self._initialize_clients()
-    
-    def _initialize_clients(self):
-        """Initialize API clients."""
-        logger.info("Initializing RAG Retriever clients...")
+# Errors that are worth retrying — transient network / rate / 5xx issues.
+_RETRYABLE = (
+    APIConnectionError,
+    APITimeoutError,
+    InternalServerError,
+    RateLimitError,
+)
 
-        # Shared Qdrant client for vector search
+
+class RAGRetriever:
+    """Document retriever and response generator for the RAG system."""
+
+    def __init__(self) -> None:
+        self._initialize_clients()
+
+    # ------------------------------------------------------------------
+    # Setup
+    # ------------------------------------------------------------------
+    def _initialize_clients(self) -> None:
+        logger.info("Initializing RAG Retriever clients…")
         self.qdrant_client = get_qdrant_client()
-        
-        # MongoDB async client for chat history
         self.mongo_client = AsyncIOMotorClient(settings.mongo_uri)
         self.mongo_db = self.mongo_client[settings.mongo_db_name]
-        
-        # OpenAI client (configured for OpenRouter)
         self.openai_client = AsyncOpenAI(
             api_key=settings.openrouter_api_key,
             base_url=settings.openrouter_base_url,
-            timeout=LLM_TIMEOUT
+            timeout=LLM_TIMEOUT,
         )
-        
-        logger.info("Retriever clients initialized successfully")
-    
+        logger.info("Retriever clients ready")
+
+    # ------------------------------------------------------------------
+    # External calls (with retry)
+    # ------------------------------------------------------------------
     async def generate_query_embedding(self, query: str) -> List[float]:
-        """
-        Generate embedding for user query.
-        
-        Args:
-            query: User's query text
-            
-        Returns:
-            Embedding vector
-        """
-        try:
-            response = await self.openai_client.embeddings.create(
-                model=settings.embedding_model,
-                input=query
-            )
-            return response.data[0].embedding
-            
-        except Exception as e:
-            logger.error(f"Error generating query embedding: {e}")
-            raise
-    
-    async def retrieve_relevant_documents(
-        self, 
-        query: str,
-        top_k: Optional[int] = None,
-        score_threshold: Optional[float] = None,
-        filter_source: Optional[str] = None
-    ) -> List[Dict[str, Any]]:
-        """
-        Retrieve relevant documents for a query using semantic search.
-        
-        Args:
-            query: User's query text
-            top_k: Number of documents to retrieve (default from settings)
-            score_threshold: Minimum similarity score (default from settings)
-            filter_source: Optional filter by source name
-            
-        Returns:
-            List of relevant document chunks with metadata
-        """
-        top_k = top_k or settings.top_k
-        score_threshold = score_threshold or settings.similarity_threshold
-        
-        try:
-            logger.info(f"Retrieving documents for query: {query[:50]}...")
-            
-            # Generate query embedding
-            query_embedding = await self.generate_query_embedding(query)
-            
-            # Build filter if source is specified
-            search_filter = None
-            if filter_source:
-                search_filter = Filter(
-                    must=[
-                        FieldCondition(
-                            key="source",
-                            match=MatchValue(value=filter_source)
-                        )
-                    ]
+        """Public alias kept for backwards compatibility with older callers/tests."""
+        return await self._embed(query)
+
+    async def _embed(self, text: str) -> List[float]:
+        """Embed a single string. Retries on transient errors."""
+        async for attempt in AsyncRetrying(
+            stop=stop_after_attempt(settings.embedding_max_retries),
+            wait=wait_exponential(multiplier=0.5, min=0.5, max=8),
+            retry=retry_if_exception_type(_RETRYABLE),
+            reraise=True,
+        ):
+            with attempt:
+                resp = await self.openai_client.embeddings.create(
+                    model=settings.embedding_model,
+                    input=text,
                 )
-            
-            # Search in Qdrant
-            search_results = self.qdrant_client.search(
-                collection_name=settings.qdrant_collection,
-                query_vector=query_embedding,
-                limit=top_k,
-                score_threshold=score_threshold,
-                query_filter=search_filter
-            )
-            
-            # Format results
-            documents = []
-            for result in search_results:
-                documents.append({
-                    "text": result.payload.get("text", ""),
-                    "source": result.payload.get("source", "unknown"),
-                    "url": result.payload.get("url", ""),
-                    "document_id": result.payload.get("document_id", ""),
-                    "chunk_index": result.payload.get("chunk_index", 0),
-                    "score": round(result.score, 4),
-                    "metadata": result.payload.get("metadata", {})
-                })
-            
-            logger.info(f"Retrieved {len(documents)} relevant documents")
-            return documents
-            
-        except Exception as e:
-            logger.error(f"Error retrieving documents: {e}")
-            raise
-    
-    async def generate_response(
-        self, 
-        query: str, 
-        context: str,
-        system_prompt: Optional[str] = None
+                return resp.data[0].embedding
+        # Unreachable, but the type checker doesn't know that.
+        raise RuntimeError("embedding retry loop exited without result")
+
+    async def _complete(
+        self,
+        system: str,
+        user: str,
+        *,
+        temperature: float,
+        max_tokens: int,
     ) -> str:
-        """
-        Generate LLM response based on query and context.
-        
-        Args:
-            query: User's question
-            context: Retrieved document context
-            system_prompt: Optional custom system prompt
-            
-        Returns:
-            Generated response text
-        """
-        try:
-            # Use default or custom system prompt
-            sys_prompt = system_prompt or SYSTEM_PROMPT
-            
-            # Format user prompt with context
-            user_prompt = RAG_PROMPT_TEMPLATE.format(
-                context=context,
-                question=query
-            )
-            
-            logger.debug(f"Generating response for query: {query[:50]}...")
-            
-            # Call LLM via OpenRouter
-            response = await self.openai_client.chat.completions.create(
-                model=settings.llm_model,
-                messages=[
-                    {"role": "system", "content": sys_prompt},
-                    {"role": "user", "content": user_prompt}
-                ],
-                temperature=settings.temperature,
-                max_tokens=settings.max_tokens
-            )
-            
-            answer = response.choices[0].message.content
-            logger.debug("Response generated successfully")
-            
-            return answer
-            
-        except Exception as e:
-            error_text = str(e)
-
-            # Graceful retry for OpenRouter insufficient credits errors
-            if "Error code: 402" in error_text:
-                affordable_tokens = self._extract_affordable_tokens(error_text)
-                if affordable_tokens and affordable_tokens > 32:
-                    retry_tokens = min(settings.max_tokens, affordable_tokens)
-                    logger.warning(
-                        f"Retrying LLM response with reduced max_tokens={retry_tokens} due to credits limit"
+        """Chat completion with retry + a graceful 402-credits fallback."""
+        async for attempt in AsyncRetrying(
+            stop=stop_after_attempt(settings.llm_max_retries),
+            wait=wait_exponential(multiplier=0.5, min=0.5, max=6),
+            retry=retry_if_exception_type(_RETRYABLE),
+            reraise=True,
+        ):
+            with attempt:
+                try:
+                    resp = await self.openai_client.chat.completions.create(
+                        model=settings.llm_model,
+                        messages=[
+                            {"role": "system", "content": system},
+                            {"role": "user", "content": user},
+                        ],
+                        temperature=temperature,
+                        max_tokens=max_tokens,
                     )
-                    try:
-                        retry_response = await self.openai_client.chat.completions.create(
-                            model=settings.llm_model,
-                            messages=[
-                                {"role": "system", "content": sys_prompt},
-                                {"role": "user", "content": user_prompt}
-                            ],
-                            temperature=settings.temperature,
-                            max_tokens=retry_tokens
-                        )
+                    return resp.choices[0].message.content or ""
+                except APIError as e:
+                    # OpenRouter returns 402 with "can only afford N tokens" — retry once
+                    # with a reduced budget instead of giving up.
+                    msg = str(e)
+                    if "402" in msg or "insufficient" in msg.lower():
+                        affordable = self._extract_affordable_tokens(msg)
+                        if affordable and affordable > 32:
+                            retry_tokens = min(max_tokens, affordable)
+                            logger.warning(
+                                "Insufficient credits; retrying with max_tokens=%d",
+                                retry_tokens,
+                            )
+                            resp = await self.openai_client.chat.completions.create(
+                                model=settings.llm_model,
+                                messages=[
+                                    {"role": "system", "content": system},
+                                    {"role": "user", "content": user},
+                                ],
+                                temperature=temperature,
+                                max_tokens=retry_tokens,
+                            )
+                            return resp.choices[0].message.content or ""
+                    raise
+        raise RuntimeError("completion retry loop exited without result")
 
-                        retry_answer = retry_response.choices[0].message.content
-                        logger.debug("Response generated successfully after reduced-token retry")
-                        return retry_answer
-                    except Exception as retry_error:
-                        logger.error(f"Retry with reduced tokens also failed: {retry_error}")
-
-            logger.error(f"Error generating LLM response: {e}")
-            raise
-
-    def _extract_affordable_tokens(self, error_text: str) -> Optional[int]:
-        """Extract affordable token count from OpenRouter 402 error text."""
+    @staticmethod
+    def _extract_affordable_tokens(error_text: str) -> Optional[int]:
         match = re.search(r"can only afford\s+(\d+)", error_text)
         if not match:
             return None
-
         try:
             return int(match.group(1))
         except ValueError:
             return None
-    
+
+    # ------------------------------------------------------------------
+    # Query rewriting (HyDE)
+    # ------------------------------------------------------------------
+    async def _hyde_rewrite(self, query: str) -> str:
+        """Generate a hypothetical answer paragraph and return it for embedding."""
+        try:
+            paragraph = await self._complete(
+                system="You write concise hypothetical passages for retrieval.",
+                user=HYDE_PROMPT_TEMPLATE.format(question=query),
+                temperature=0.3,
+                max_tokens=180,
+            )
+            paragraph = (paragraph or "").strip()
+            if not paragraph:
+                return query
+            # Concatenate so the embedding still anchors on the literal terms.
+            return f"{query}\n\n{paragraph}"
+        except Exception as e:
+            logger.warning("HyDE rewrite failed (%s); falling back to raw query", e)
+            return query
+
+    # ------------------------------------------------------------------
+    # Vector search
+    # ------------------------------------------------------------------
+    async def retrieve_relevant_documents(
+        self,
+        query: str,
+        top_k: Optional[int] = None,
+        score_threshold: Optional[float] = None,
+        filter_source: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """Embed the query, search Qdrant, return ranked chunks."""
+        top_k = top_k or settings.top_k
+        score_threshold = (
+            score_threshold if score_threshold is not None else settings.similarity_threshold
+        )
+
+        embed_text = (
+            await self._hyde_rewrite(query) if settings.enable_hyde else query
+        )
+        query_embedding = await self._embed(embed_text)
+
+        search_filter = None
+        if filter_source:
+            search_filter = Filter(
+                must=[FieldCondition(key="source", match=MatchValue(value=filter_source))]
+            )
+
+        # Overfetch so MMR has something to pick from.
+        overfetch_k = top_k * settings.overfetch_multiplier if settings.enable_mmr else top_k
+
+        results = self.qdrant_client.search(
+            collection_name=settings.qdrant_collection,
+            query_vector=query_embedding,
+            limit=overfetch_k,
+            score_threshold=score_threshold,
+            query_filter=search_filter,
+            with_vectors=settings.enable_mmr,  # Need vectors for MMR; otherwise skip the cost.
+        )
+
+        if not results:
+            return []
+
+        candidates = [
+            {
+                "text": r.payload.get("text", ""),
+                "source": r.payload.get("source", "unknown"),
+                "url": r.payload.get("url", ""),
+                "document_id": r.payload.get("document_id", ""),
+                "chunk_index": r.payload.get("chunk_index", 0),
+                "score": round(r.score, 4),
+                "metadata": r.payload.get("metadata", {}),
+                "_vector": r.vector if settings.enable_mmr else None,
+            }
+            for r in results
+        ]
+
+        if settings.enable_mmr and len(candidates) > top_k:
+            keep = mmr_rerank(
+                query_embedding=query_embedding,
+                candidate_embeddings=[c["_vector"] for c in candidates],
+                candidate_scores=[c["score"] for c in candidates],
+                top_k=top_k,
+                lambda_mult=settings.mmr_lambda,
+            )
+            candidates = [candidates[i] for i in keep]
+        else:
+            candidates = candidates[:top_k]
+
+        # Strip the internal vector before returning.
+        for c in candidates:
+            c.pop("_vector", None)
+
+        return candidates
+
+    # ------------------------------------------------------------------
+    # Generation
+    # ------------------------------------------------------------------
+    async def generate_response(
+        self,
+        query: str,
+        context: str,
+        system_prompt: Optional[str] = None,
+    ) -> str:
+        return await self._complete(
+            system=system_prompt or SYSTEM_PROMPT,
+            user=RAG_PROMPT_TEMPLATE.format(context=context, question=query),
+            temperature=settings.temperature,
+            max_tokens=settings.max_tokens,
+        )
+
+    # ------------------------------------------------------------------
+    # End-to-end pipeline
+    # ------------------------------------------------------------------
     async def query(
-        self, 
+        self,
         user_query: str,
         session_id: Optional[str] = None,
         top_k: Optional[int] = None,
-        filter_source: Optional[str] = None
+        filter_source: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """
-        Complete RAG query pipeline: retrieve → generate → return.
-        
-        Args:
-            user_query: User's question
-            session_id: Optional session ID for chat history
-            top_k: Number of documents to retrieve
-            filter_source: Optional filter by source
-            
-        Returns:
-            Response dictionary with answer and sources
-        """
-        start_time = datetime.utcnow()
-        
+        start = time.perf_counter()
+        timings: Dict[str, int] = {}
+
         try:
-            logger.info(f"Processing query: {user_query[:100]}...")
-            
-            # Step 1: Retrieve relevant documents
-            retrieved_docs = await self.retrieve_relevant_documents(
-                query=user_query,
-                top_k=top_k,
-                filter_source=filter_source
+            logger.info("query.start q=%s", user_query[:80])
+
+            # Stage 1 — retrieve
+            t0 = time.perf_counter()
+            docs = await self.retrieve_relevant_documents(
+                query=user_query, top_k=top_k, filter_source=filter_source
             )
-            
-            # Handle no results
-            if not retrieved_docs:
-                logger.warning("No relevant documents found for query")
-                result = {
-                    "answer": DEFAULT_NO_ANSWER,
-                    "sources": [],
-                    "query": user_query,
-                    "processing_time_ms": self._calculate_time(start_time),
-                    "status": "no_results"
-                }
-                
-                # Store in history
-                if session_id:
-                    await self._store_chat_history(session_id, user_query, result)
-                
-                return result
-            
-            # Step 2: Build context from retrieved documents
-            context_parts = []
-            for i, doc in enumerate(retrieved_docs):
-                source_label = doc.get("source", "Document")
-                text = doc.get("text", "")
-                context_parts.append(f"[Source: {source_label}]\n{text}")
-            
-            context = "\n\n---\n\n".join(context_parts)
-            
-            # Step 3: Generate response
+            timings["retrieve_ms"] = int((time.perf_counter() - t0) * 1000)
+            logger.info(
+                "query.retrieve hits=%d top_score=%s ms=%d",
+                len(docs),
+                f"{docs[0]['score']:.3f}" if docs else "n/a",
+                timings["retrieve_ms"],
+            )
+
+            # No-results path
+            if not docs:
+                return self._empty_result(
+                    user_query, start, "no_results", timings, session_id
+                )
+
+            # Hallucination guard — best chunk too weak to ground a real answer.
+            best_score = docs[0]["score"]
+            if best_score < settings.hallucination_guard_score:
+                logger.warning(
+                    "query.guard_triggered best_score=%.3f < threshold=%.3f",
+                    best_score,
+                    settings.hallucination_guard_score,
+                )
+                return self._empty_result(
+                    user_query, start, "low_confidence", timings, session_id, docs
+                )
+
+            # Stage 2 — build context
+            context = "\n\n---\n\n".join(
+                f"[Source: {d.get('source', 'document')}]\n{d.get('text', '')}"
+                for d in docs
+            )
+
+            # Stage 3 — generate
+            t1 = time.perf_counter()
             answer = await self.generate_response(user_query, context)
-            
-            # Step 4: Format sources for response
+            timings["generate_ms"] = int((time.perf_counter() - t1) * 1000)
+            logger.info("query.generate ms=%d", timings["generate_ms"])
+
             sources = [
                 {
-                    "source": doc["source"],
-                    "url": doc["url"],
-                    "text": truncate_text(doc["text"], 200),
-                    "score": doc["score"],
-                    "chunk_index": doc["chunk_index"]
+                    "source": d["source"],
+                    "url": d["url"],
+                    "text": truncate_text(d["text"], 200),
+                    "score": d["score"],
+                    "chunk_index": d["chunk_index"],
                 }
-                for doc in retrieved_docs[:MAX_SOURCES_RETURNED]
+                for d in docs[:MAX_SOURCES_RETURNED]
             ]
-            
-            # Build response
+
             result = {
                 "answer": answer,
                 "sources": sources,
                 "query": user_query,
-                "documents_retrieved": len(retrieved_docs),
-                "processing_time_ms": self._calculate_time(start_time),
-                "status": "success"
+                "documents_retrieved": len(docs),
+                "processing_time_ms": int((time.perf_counter() - start) * 1000),
+                "timings": timings,
+                "status": "success",
             }
-            
-            # Store in chat history
+
             if session_id:
                 await self._store_chat_history(session_id, user_query, result)
-            
-            logger.info(f"Query processed successfully in {result['processing_time_ms']}ms")
+
+            logger.info(
+                "query.done total_ms=%d status=success", result["processing_time_ms"]
+            )
             return result
-            
+
         except Exception as e:
-            logger.error(f"Error in query pipeline: {e}")
+            logger.exception("query.error %s", e)
             return {
-                "answer": "I encountered an error while processing your question. Please try again.",
+                "answer": (
+                    "I hit an error while processing that. Please try again — "
+                    "if the problem continues, the model or vector store may be unreachable."
+                ),
                 "sources": [],
                 "query": user_query,
-                "processing_time_ms": self._calculate_time(start_time),
+                "processing_time_ms": int((time.perf_counter() - start) * 1000),
+                "timings": timings,
                 "status": "error",
-                "error": str(e)
+                "error": type(e).__name__,
             }
-    
+
+    def _empty_result(
+        self,
+        user_query: str,
+        start: float,
+        status: str,
+        timings: Dict[str, int],
+        session_id: Optional[str],
+        docs: Optional[List[Dict[str, Any]]] = None,
+    ) -> Dict[str, Any]:
+        sources = []
+        if docs:
+            # Surface what we did find so the user can see why we backed off.
+            sources = [
+                {
+                    "source": d["source"],
+                    "url": d["url"],
+                    "text": truncate_text(d["text"], 200),
+                    "score": d["score"],
+                    "chunk_index": d["chunk_index"],
+                }
+                for d in docs[:MAX_SOURCES_RETURNED]
+            ]
+        result = {
+            "answer": DEFAULT_NO_ANSWER,
+            "sources": sources,
+            "query": user_query,
+            "documents_retrieved": len(docs) if docs else 0,
+            "processing_time_ms": int((time.perf_counter() - start) * 1000),
+            "timings": timings,
+            "status": status,
+        }
+        if session_id:
+            # Fire-and-forget; failure doesn't matter here.
+            try:
+                import asyncio
+                asyncio.create_task(self._store_chat_history(session_id, user_query, result))
+            except Exception:
+                pass
+        return result
+
+    # ------------------------------------------------------------------
+    # History
+    # ------------------------------------------------------------------
     async def _store_chat_history(
-        self, 
-        session_id: str, 
-        query: str, 
-        result: Dict[str, Any]
-    ):
-        """Store chat interaction in MongoDB."""
+        self, session_id: str, query: str, result: Dict[str, Any]
+    ) -> None:
         try:
-            chat_entry = {
-                "session_id": session_id,
-                "query": query,
-                "answer": result.get("answer", ""),
-                "sources": result.get("sources", []),
-                "status": result.get("status", ""),
-                "processing_time_ms": result.get("processing_time_ms", 0),
-                "timestamp": datetime.utcnow()
-            }
-            
-            await self.mongo_db[CHAT_HISTORY_COLLECTION].insert_one(chat_entry)
-            logger.debug(f"Stored chat history for session: {session_id}")
-            
+            await self.mongo_db[CHAT_HISTORY_COLLECTION].insert_one(
+                {
+                    "session_id": session_id,
+                    "query": query,
+                    "answer": result.get("answer", ""),
+                    "sources": result.get("sources", []),
+                    "status": result.get("status", ""),
+                    "processing_time_ms": result.get("processing_time_ms", 0),
+                    "timings": result.get("timings", {}),
+                    "timestamp": datetime.utcnow(),
+                }
+            )
         except Exception as e:
-            logger.error(f"Error storing chat history: {e}")
-            # Don't raise - history storage failure shouldn't break the response
-    
+            logger.error("history.store_failed %s", e)
+
     async def get_chat_history(
-        self, 
-        session_id: str, 
-        limit: int = 10
+        self, session_id: str, limit: int = 10
     ) -> List[Dict[str, Any]]:
-        """
-        Retrieve chat history for a session.
-        
-        Args:
-            session_id: Session identifier
-            limit: Maximum number of entries to return
-            
-        Returns:
-            List of chat history entries
-        """
         try:
-            cursor = self.mongo_db[CHAT_HISTORY_COLLECTION].find(
-                {"session_id": session_id}
-            ).sort("timestamp", -1).limit(limit)
-            
+            cursor = (
+                self.mongo_db[CHAT_HISTORY_COLLECTION]
+                .find({"session_id": session_id})
+                .sort("timestamp", -1)
+                .limit(limit)
+            )
             history = await cursor.to_list(length=limit)
-            
-            # Convert ObjectId to string
             for entry in history:
                 entry["_id"] = str(entry["_id"])
-            
-            return history[::-1]  # Return in chronological order
-            
+            return history[::-1]
         except Exception as e:
-            logger.error(f"Error retrieving chat history: {e}")
+            logger.error("history.fetch_failed %s", e)
             return []
-    
+
     async def search_similar_documents(
-        self,
-        query: str,
-        top_k: int = 10
+        self, query: str, top_k: int = 10
     ) -> List[Dict[str, Any]]:
-        """
-        Search for similar documents without generating a response.
-        Useful for document discovery and exploration.
-        
-        Args:
-            query: Search query
-            top_k: Number of results
-            
-        Returns:
-            List of similar documents
-        """
         return await self.retrieve_relevant_documents(
-            query=query,
-            top_k=top_k,
-            score_threshold=MIN_SIMILARITY_SCORE
+            query=query, top_k=top_k, score_threshold=MIN_SIMILARITY_SCORE
         )
-    
-    def _calculate_time(self, start_time: datetime) -> int:
-        """Calculate elapsed time in milliseconds."""
-        elapsed = datetime.utcnow() - start_time
-        return int(elapsed.total_seconds() * 1000)
-    
-    def close(self):
-        """Close all client connections."""
+
+    # ------------------------------------------------------------------
+    # Lifecycle
+    # ------------------------------------------------------------------
+    def close(self) -> None:
         try:
             self.mongo_client.close()
             logger.info("Retriever connections closed")
         except Exception as e:
-            logger.error(f"Error closing connections: {e}")
+            logger.error("close.error %s", e)

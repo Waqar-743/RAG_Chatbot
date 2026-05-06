@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx tsc *)",
+      "Bash(npm run *)",
+      "Bash(./venv/Scripts/python.exe -c \"from rag.retrieval import RAGRetriever; from rag.indexing import RAGIndexer; from rag.rerank import mmr_rerank; from config.settings import settings; print\\('OK', settings.enable_mmr, settings.mmr_lambda, settings.hallucination_guard_score\\)\")",
+      "Bash(./venv/Scripts/python.exe -m pytest tests/ -x --tb=short)",
+      "Bash(./venv/Scripts/python.exe -m pytest tests/ --tb=short)"
+    ]
+  }
+}

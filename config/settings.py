@@ -121,7 +121,57 @@ class Settings(BaseSettings):
         ge=0,
         description="Overlap between text chunks"
     )
-    
+
+    # ===========================================
+    # Retrieval Hardening (Pass 2 upgrades)
+    # ===========================================
+    enable_hyde: bool = Field(
+        default=False,
+        description="Enable HyDE query rewriting (generate a hypothetical answer to embed). "
+                    "Improves recall on abstract questions but adds one LLM call per query.",
+    )
+    enable_mmr: bool = Field(
+        default=True,
+        description="Enable Maximal Marginal Relevance reranking for source diversity.",
+    )
+    mmr_lambda: float = Field(
+        default=0.6,
+        ge=0.0,
+        le=1.0,
+        description="MMR trade-off: 1.0 = pure relevance, 0.0 = pure diversity.",
+    )
+    overfetch_multiplier: int = Field(
+        default=3,
+        ge=1,
+        le=10,
+        description="Pull top_k * multiplier from vector store before reranking.",
+    )
+    hallucination_guard_score: float = Field(
+        default=0.35,
+        ge=0.0,
+        le=1.0,
+        description="If the best retrieved chunk scores below this, return the no-answer "
+                    "response instead of generating (prevents hallucination on weak matches).",
+    )
+    embedding_max_retries: int = Field(
+        default=4,
+        ge=1,
+        le=10,
+        description="Retry attempts for embedding API calls.",
+    )
+    llm_max_retries: int = Field(
+        default=3,
+        ge=1,
+        le=10,
+        description="Retry attempts for LLM completion calls.",
+    )
+    embedding_batch_size: int = Field(
+        default=64,
+        ge=1,
+        le=512,
+        description="Max chunks per embedding API call when indexing.",
+    )
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

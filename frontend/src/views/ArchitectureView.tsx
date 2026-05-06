@@ -1,284 +1,221 @@
 import React, { useRef, useState } from 'react';
-import { useToast } from '../context/GlobalContext';
 import { motion } from 'framer-motion';
+import { useToast } from '../context/GlobalContext';
+
+type NodeId = 'frontend' | 'backend' | 'engine' | 'services' | 'persistence';
+const DIMS: Record<NodeId, { w: number; h: number }> = {
+  frontend:    { w: 240, h: 140 },
+  backend:     { w: 240, h: 140 },
+  engine:      { w: 290, h: 190 },
+  services:    { w: 290, h: 130 },
+  persistence: { w: 290, h: 150 },
+};
 
 const ArchitectureView: React.FC = () => {
   const { showToast } = useToast();
   const constraintsRef = useRef<HTMLDivElement>(null);
-  
-  // Node positions state - tracked in state to update SVG lines
-  const [nodes, setNodes] = useState({
-    frontend: { x: 40, y: 280 },
-    backend: { x: 324, y: 280 },
-    engine: { x: 608, y: 280 },
-    services: { x: 612, y: 40 },
-    persistence: { x: 612, y: 500 }
+
+  const [nodes, setNodes] = useState<Record<NodeId, { x: number; y: number }>>({
+    frontend:    { x: 40,  y: 280 },
+    backend:     { x: 340, y: 280 },
+    engine:      { x: 640, y: 270 },
+    services:    { x: 640, y: 50 },
+    persistence: { x: 640, y: 510 },
   });
 
-  const handleDrag = (id: keyof typeof nodes, info: any) => {
-    setNodes(prev => ({
-      ...prev,
-      [id]: { 
-        x: prev[id].x + info.delta.x, 
-        y: prev[id].y + info.delta.y 
-      }
-    }));
+  const drag = (id: NodeId, info: { delta: { x: number; y: number } }) =>
+    setNodes(p => ({ ...p, [id]: { x: p[id].x + info.delta.x, y: p[id].y + info.delta.y } }));
+
+  const anchor = (id: NodeId, side: 'left' | 'right' | 'top' | 'bottom') => {
+    const n = nodes[id], { w, h } = DIMS[id];
+    if (side === 'left')   return { x: n.x,         y: n.y + h / 2 };
+    if (side === 'right')  return { x: n.x + w,     y: n.y + h / 2 };
+    if (side === 'top')    return { x: n.x + w / 2, y: n.y };
+    return                       { x: n.x + w / 2, y: n.y + h };
   };
 
-  const handleExport = () => {
-    showToast('Preparing system blueprint PDF...', 'info');
-    setTimeout(() => showToast('Architecture exported successfully', 'success'), 1500);
-  };
-
-  const handleShare = () => {
+  const copyLink = () => {
     navigator.clipboard.writeText(window.location.href);
-    showToast('Blueprint link copied to clipboard', 'success');
-  };
-
-  // Helper to get anchor points for lines
-  const getAnchor = (id: keyof typeof nodes, side: 'left' | 'right' | 'top' | 'bottom') => {
-    const node = nodes[id];
-    const dimensions = {
-      frontend: { w: 224, h: 130 },
-      backend: { w: 224, h: 130 },
-      engine: { w: 288, h: 175 },
-      services: { w: 288, h: 120 },
-      persistence: { w: 288, h: 140 }
-    };
-    
-    const { w, h } = dimensions[id];
-    
-    switch(side) {
-      case 'left': return { x: node.x, y: node.y + h/2 };
-      case 'right': return { x: node.x + w, y: node.y + h/2 };
-      case 'top': return { x: node.x + w/2, y: node.y };
-      case 'bottom': return { x: node.x + w/2, y: node.y + h };
-    }
+    showToast('Blueprint URL copied', 'success');
   };
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden">
-      <header className="px-10 py-6 border-b border-[#283039] bg-[#111418]/50">
-        <div className="flex flex-wrap gap-2 mb-2">
-          <span className="text-[#9dabb9] text-sm font-medium">System Dashboard</span>
-          <span className="text-[#9dabb9] text-sm font-medium">/</span>
-          <span className="text-white text-sm font-medium">Architecture Blueprint</span>
-        </div>
-        <div className="flex flex-wrap justify-between items-end gap-3">
-          <div className="flex flex-col gap-1">
-            <h2 className="text-white text-3xl font-black tracking-tight">System Architecture</h2>
-            <p className="text-[#9dabb9] text-base">Interactive technical blueprint. Drag components to reorganize the flow.</p>
-          </div>
-          <div className="flex gap-3">
-             <button 
-              onClick={handleExport}
-              className="flex items-center gap-2 rounded-lg h-10 px-4 bg-[#283039] text-white text-sm font-bold border border-[#3b4754] hover:bg-slate-700 transition-colors"
-            >
-              <span className="material-symbols-outlined text-sm">download</span>
-              Export PDF
-            </button>
-            <button 
-              onClick={handleShare}
-              className="flex items-center gap-2 rounded-lg h-10 px-4 bg-primary text-white text-sm font-bold shadow-lg shadow-primary/20 hover:bg-primary/90 transition-colors"
-            >
-              <span className="material-symbols-outlined text-sm">share</span>
-              Share Blueprint
-            </button>
-          </div>
-        </div>
-      </header>
-
-      <div className="flex-1 p-10 overflow-auto no-scrollbar">
-        <div 
-          ref={constraintsRef}
-          className="relative w-full h-[700px] min-w-[1000px] bg-[#111418] rounded-2xl border border-[#283039] blueprint-grid overflow-hidden shadow-2xl"
-        >
-          {/* SVG Connector Layer */}
-          <svg className="absolute inset-0 w-full h-full pointer-events-none z-0">
-            <defs>
-              <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-                <path d="M 0 0 L 10 5 L 0 10 z" fill="#FFB200" fillOpacity="0.5" />
-              </marker>
-              <marker id="arrow-teal" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-                <path d="M 0 0 L 10 5 L 0 10 z" fill="#10b981" fillOpacity="0.5" />
-              </marker>
-            </defs>
-            
-            <ConnectionLine start={getAnchor('frontend', 'right')} end={getAnchor('backend', 'left')} label="REST" color="#FFB200" />
-            <ConnectionLine start={getAnchor('backend', 'right')} end={getAnchor('engine', 'left')} label="Async" color="#FFB200" />
-            <ConnectionLine start={getAnchor('engine', 'top')} end={getAnchor('services', 'bottom')} label="HTTP/JSON" color="#10b981" />
-            <ConnectionLine start={getAnchor('engine', 'bottom')} end={getAnchor('persistence', 'top')} color="#10b981" />
-          </svg>
-
-          {/* Legend */}
-          <div className="absolute bottom-6 left-6 flex flex-col gap-2 bg-[#111418]/90 p-3 rounded-lg border border-[#283039] backdrop-blur-sm z-20 pointer-events-none">
-            <p className="text-[10px] uppercase font-bold text-[#9dabb9] mb-1">Legend</p>
-            <div className="flex items-center gap-2 text-xs">
-              <div className="size-2 rounded-full bg-primary"></div>
-              <span>Core Application</span>
-            </div>
-            <div className="flex items-center gap-2 text-xs">
-              <div className="size-2 rounded-full bg-accent-teal"></div>
-              <span>Managed Services</span>
-            </div>
-          </div>
-
-          <DraggableNode id="frontend" pos={nodes.frontend} onDrag={(info) => handleDrag('frontend', info)} constraints={constraintsRef}>
-            <NodeCard 
-              icon="web" 
-              title="Frontend Layer" 
-              subtitle="React + Vite" 
-              desc="Handles chat interface, document indexing UI, and admin dashboard." 
-              type="core"
-              onClick={() => showToast('Frontend Layer: React 18 + TypeScript', 'info')}
-            />
-          </DraggableNode>
-
-          <DraggableNode id="backend" pos={nodes.backend} onDrag={(info) => handleDrag('backend', info)} constraints={constraintsRef}>
-            <NodeCard 
-              icon="api" 
-              title="Backend Layer" 
-              subtitle="FastAPI Server" 
-              desc="API routing, request validation, and session management." 
-              type="core"
-              onClick={() => showToast('Backend Layer: FastAPI + Uvicorn', 'success')}
-            />
-          </DraggableNode>
-
-          <DraggableNode id="engine" pos={nodes.engine} onDrag={(info) => handleDrag('engine', info)} constraints={constraintsRef}>
-            <div 
-              className="w-72 bg-[#1b222a] border-2 border-primary/50 p-6 rounded-2xl shadow-[0_0_40px_rgba(255,178,0,0.15)] cursor-pointer hover:border-primary transition-all"
-              onClick={() => showToast('RAG Engine: LlamaIndex + Custom Pipeline', 'info')}
-            >
-              <div className="flex items-center gap-3 mb-4">
-                <div className="size-12 rounded-xl bg-primary flex items-center justify-center text-white">
-                  <span className="material-symbols-outlined text-3xl">hub</span>
-                </div>
-                <div>
-                  <h3 className="text-sm font-black text-white">RAG Engine</h3>
-                  <p className="text-[10px] text-[#9dabb9] uppercase font-bold tracking-tight">LlamaIndex v0.10+</p>
-                </div>
-              </div>
-              <div className="space-y-2">
-                <div className="flex items-center gap-2 text-[10px] text-white/80 bg-white/5 p-2 rounded border border-white/10">
-                  <span className="material-symbols-outlined text-[14px] text-primary">search</span>
-                  Semantic Search
-                </div>
-                <div className="flex items-center gap-2 text-[10px] text-white/80 bg-white/5 p-2 rounded border border-white/10">
-                  <span className="material-symbols-outlined text-[14px] text-primary">edit_note</span>
-                  Query Synthesis
-                </div>
-              </div>
-            </div>
-          </DraggableNode>
-
-          <DraggableNode id="services" pos={nodes.services} onDrag={(info) => handleDrag('services', info)} constraints={constraintsRef}>
-             <NodeCard 
-              icon="cloud" 
-              title="External Services" 
-              subtitle="OpenRouter API" 
-              desc="DeepSeek LLM & OpenAI Embeddings via OpenRouter." 
-              type="managed"
-              width="w-72"
-              onClick={() => showToast('External APIs: OpenRouter  DeepSeek + text-embedding-3-small', 'success')}
-            />
-          </DraggableNode>
-
-          <DraggableNode id="persistence" pos={nodes.persistence} onDrag={(info) => handleDrag('persistence', info)} constraints={constraintsRef}>
-            <div 
-              className="w-72 bg-[#1b222a] border border-accent-teal/30 p-5 rounded-xl shadow-xl cursor-pointer hover:border-accent-teal transition-all"
-              onClick={() => showToast('Persistence: Qdrant + MongoDB Atlas', 'success')}
-            >
-              <div className="flex items-center gap-3 mb-4">
-                <div className="size-10 rounded-lg bg-accent-teal/20 flex items-center justify-center text-accent-teal">
-                  <span className="material-symbols-outlined">database</span>
-                </div>
-                <h3 className="text-sm font-bold text-white">Data Persistence</h3>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="bg-black/40 p-3 rounded-lg text-center border border-white/5">
-                  <p className="text-[9px] font-black text-accent-teal uppercase">Vector</p>
-                  <p className="text-xs font-medium text-white">Qdrant</p>
-                </div>
-                <div className="bg-black/40 p-3 rounded-lg text-center border border-white/5">
-                  <p className="text-[9px] font-black text-accent-teal uppercase">Metadata</p>
-                  <p className="text-xs font-medium text-white">MongoDB</p>
-                </div>
-              </div>
-            </div>
-          </DraggableNode>
+    <div className="px-4 md:px-8 pb-24 max-w-7xl mx-auto">
+      {/* Header */}
+      <motion.div
+        initial={{ opacity: 0, y: 16, filter: 'blur(6px)' }}
+        animate={{ opacity: 1, y: 0, filter: 'blur(0)' }}
+        transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
+        className="mb-12 flex flex-col md:flex-row md:items-end md:justify-between gap-6"
+      >
+        <div>
+          <span className="eyebrow">System Topology</span>
+          <h1 className="heading-xl mt-5">
+            How it <em>thinks</em>.
+          </h1>
+          <p className="mt-5 text-chalk-dim text-base max-w-xl leading-relaxed">
+            A live, draggable blueprint of the retrieval pipeline — frontend, API, engine, models, persistence.
+          </p>
         </div>
 
-        <div className="mt-12 mb-10">
-          <h2 className="text-white text-2xl font-bold tracking-tight mb-8">Component Specifications</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <SpecCard 
-              icon="view_quilt" 
-              title="UI & Access" 
-              points={[
-                { label: "React Frontend", desc: "TypeScript-based reactive UI with real-time updates." },
-                { label: "REST API", desc: "FastAPI backend with automatic OpenAPI documentation." }
-              ]} 
-              color="primary"
-            />
-            <SpecCard 
-              icon="psychology" 
-              title="Intelligence Layer" 
-              points={[
-                { label: "DeepSeek LLM", desc: "High-quality reasoning model via OpenRouter." },
-                { label: "Embeddings", desc: "text-embedding-3-small (1536 dimensions)." }
-              ]} 
-              color="primary"
-            />
-            <SpecCard 
-              icon="storage" 
-              title="Storage Backend" 
-              points={[
-                { label: "Qdrant Vector DB", desc: "High-performance vector search with HNSW indexing." },
-                { label: "MongoDB Atlas", desc: "Stores document metadata and chat history." }
-              ]} 
-              color="accent-teal"
-            />
+        <div className="flex items-center gap-2">
+          <button onClick={copyLink} className="btn-ghost">
+            Share blueprint
+            <span className="icon-island"><i className="ph-link-simple text-[13px]" /></span>
+          </button>
+        </div>
+      </motion.div>
+
+      {/* Blueprint canvas */}
+      <div className="bezel-shell mb-12">
+        <div className="bezel-core overflow-hidden">
+          <div
+            ref={constraintsRef}
+            className="relative w-full min-w-[1000px] h-[720px]"
+            style={{
+              backgroundImage:
+                'linear-gradient(rgba(201,184,255,0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(201,184,255,0.04) 1px, transparent 1px)',
+              backgroundSize: '32px 32px',
+            }}
+          >
+            <svg className="absolute inset-0 w-full h-full pointer-events-none z-0">
+              <defs>
+                <marker id="arr-acc" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                  <path d="M 0 0 L 10 5 L 0 10 z" fill="#C9B8FF" fillOpacity="0.7" />
+                </marker>
+                <marker id="arr-mint" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                  <path d="M 0 0 L 10 5 L 0 10 z" fill="#A7F3D0" fillOpacity="0.7" />
+                </marker>
+              </defs>
+              <Connector start={anchor('frontend', 'right')} end={anchor('backend', 'left')}    label="REST"   color="#C9B8FF" />
+              <Connector start={anchor('backend', 'right')}  end={anchor('engine', 'left')}     label="Async"  color="#C9B8FF" />
+              <Connector start={anchor('engine', 'top')}     end={anchor('services', 'bottom')} label="HTTPS"  color="#A7F3D0" />
+              <Connector start={anchor('engine', 'bottom')}  end={anchor('persistence', 'top')}                color="#A7F3D0" />
+            </svg>
+
+            {/* Legend */}
+            <div className="absolute bottom-5 left-5 z-20 pointer-events-none flex items-center gap-4 px-4 py-2 rounded-full bg-ink-900/70 border border-white/[0.06] backdrop-blur-md">
+              <Legend color="#C9B8FF" label="Core" />
+              <span className="size-1 rounded-full bg-white/10" />
+              <Legend color="#A7F3D0" label="Managed" />
+            </div>
+
+            <Draggable id="frontend" pos={nodes.frontend} onDrag={i => drag('frontend', i)} c={constraintsRef}>
+              <NodeCard icon="ph-browser" title="Frontend" subtitle="React · Vite · TS"
+                        desc="Chat surface, indexing console, draggable blueprint."
+                        tone="core" w={DIMS.frontend.w}
+                        onClick={() => showToast('React 18 + TypeScript + Tailwind', 'info')} />
+            </Draggable>
+
+            <Draggable id="backend" pos={nodes.backend} onDrag={i => drag('backend', i)} c={constraintsRef}>
+              <NodeCard icon="ph-cloud" title="Backend" subtitle="FastAPI · Uvicorn"
+                        desc="Routing, validation, sessions, file extraction."
+                        tone="core" w={DIMS.backend.w}
+                        onClick={() => showToast('FastAPI + Uvicorn', 'success')} />
+            </Draggable>
+
+            <Draggable id="engine" pos={nodes.engine} onDrag={i => drag('engine', i)} c={constraintsRef}>
+              <div onClick={() => showToast('LlamaIndex + custom RAG pipeline', 'info')}
+                   className="bezel-shell cursor-pointer" style={{ width: DIMS.engine.w }}>
+                <div className="bezel-core p-5 ring-1 ring-accent/30">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="size-11 rounded-xl bg-accent/[0.16] border border-accent/30 flex items-center justify-center text-accent shadow-[0_0_20px_rgba(201,184,255,0.25)]">
+                      <i className="ph-graph text-[22px]" />
+                    </div>
+                    <div>
+                      <h3 className="text-[14px] font-medium tracking-tight text-chalk">RAG Engine</h3>
+                      <p className="text-[10px] tracking-[0.2em] uppercase text-chalk-mute">LlamaIndex 0.10+</p>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Pip icon="ph-magnifying-glass" label="Hybrid retrieval" />
+                    <Pip icon="ph-list-magnifying-glass" label="MMR rerank · HyDE" />
+                  </div>
+                </div>
+              </div>
+            </Draggable>
+
+            <Draggable id="services" pos={nodes.services} onDrag={i => drag('services', i)} c={constraintsRef}>
+              <NodeCard icon="ph-lightning" title="Models" subtitle="OpenRouter"
+                        desc="DeepSeek (reasoning) · text-embedding-3-small (1536d)."
+                        tone="managed" w={DIMS.services.w}
+                        onClick={() => showToast('OpenRouter · DeepSeek + OpenAI embeddings', 'success')} />
+            </Draggable>
+
+            <Draggable id="persistence" pos={nodes.persistence} onDrag={i => drag('persistence', i)} c={constraintsRef}>
+              <div onClick={() => showToast('Qdrant Cloud + MongoDB Atlas', 'success')}
+                   className="bezel-shell cursor-pointer" style={{ width: DIMS.persistence.w }}>
+                <div className="bezel-core p-5 ring-1 ring-accent-mint/30">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="size-10 rounded-xl bg-accent-mint/[0.12] border border-accent-mint/30 flex items-center justify-center text-accent-mint">
+                      <i className="ph-database text-[18px]" />
+                    </div>
+                    <h3 className="text-[14px] font-medium tracking-tight text-chalk">Persistence</h3>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <MiniTile label="Vectors" value="Qdrant" />
+                    <MiniTile label="Metadata" value="MongoDB" />
+                  </div>
+                </div>
+              </div>
+            </Draggable>
           </div>
+        </div>
+      </div>
+
+      {/* Spec cards */}
+      <div className="mb-6">
+        <span className="eyebrow">Component spec</span>
+        <h2 className="text-[28px] md:text-[34px] font-medium tracking-editorial mt-4 mb-8 text-chalk">
+          Stack, end to end.
+        </h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <SpecCard icon="ph-browser" eyebrow="Surface" title="UI & access" tone="accent"
+                    points={[
+                      { l: 'React 18 + TypeScript', d: 'Reactive UI with Framer Motion micro-interactions.' },
+                      { l: 'FastAPI', d: 'Auto-OpenAPI, async file extraction, streaming.' },
+                    ]} />
+          <SpecCard icon="ph-sparkle" eyebrow="Cognition" title="Intelligence" tone="accent"
+                    points={[
+                      { l: 'DeepSeek via OpenRouter', d: 'High-quality reasoning at low latency.' },
+                      { l: 'text-embedding-3-small', d: '1536-dim semantic vectors.' },
+                    ]} />
+          <SpecCard icon="ph-database" eyebrow="Memory" title="Storage" tone="mint"
+                    points={[
+                      { l: 'Qdrant Cloud', d: 'HNSW vector search · cosine.' },
+                      { l: 'MongoDB Atlas', d: 'Document metadata, sessions, chat history.' },
+                    ]} />
         </div>
       </div>
     </div>
   );
 };
 
-const DraggableNode: React.FC<{ id: string, pos: {x:number, y:number}, onDrag: (info: any)=>void, constraints: React.RefObject<any>, children: React.ReactNode }> = ({ pos, onDrag, constraints, children }) => (
+const Draggable: React.FC<{ id: string; pos: { x: number; y: number }; onDrag: (i: { delta: { x: number; y: number } }) => void; c: React.RefObject<HTMLDivElement>; children: React.ReactNode }> =
+  ({ pos, onDrag, c, children }) => (
   <motion.div
-    drag
-    dragMomentum={false}
-    dragConstraints={constraints}
-    onDrag={(_, info) => onDrag(info)}
+    drag dragMomentum={false} dragConstraints={c}
+    onDrag={(_, info) => onDrag({ delta: { x: info.delta.x, y: info.delta.y } })}
     style={{ x: pos.x, y: pos.y, position: 'absolute' }}
-    whileDrag={{ zIndex: 100, cursor: 'grabbing' }}
-    className="cursor-grab select-none"
+    whileDrag={{ zIndex: 30, scale: 1.02 }}
+    className="cursor-grab select-none active:cursor-grabbing"
   >
     {children}
   </motion.div>
 );
 
-const ConnectionLine: React.FC<{ start: any, end: any, label?: string, color: string }> = ({ start, end, label, color }) => {
-  const midX = (start.x + end.x) / 2;
-  const midY = (start.y + end.y) / 2;
-  
+const Connector: React.FC<{ start: { x: number; y: number }; end: { x: number; y: number }; label?: string; color: string }> =
+  ({ start, end, label, color }) => {
+  const mx = (start.x + end.x) / 2, my = (start.y + end.y) / 2;
   return (
     <g>
-      <path 
-        d={`M ${start.x} ${start.y} L ${end.x} ${end.y}`} 
-        stroke={color} 
-        strokeWidth="2" 
-        strokeDasharray="6 4"
-        fill="none" 
-        opacity="0.3"
-        markerEnd={`url(#${color === '#10b981' ? 'arrow-teal' : 'arrow'})`}
-      />
+      <path d={`M ${start.x} ${start.y} L ${end.x} ${end.y}`}
+            stroke={color} strokeWidth="1.5" strokeDasharray="5 4" fill="none" opacity="0.45"
+            markerEnd={`url(#${color === '#A7F3D0' ? 'arr-mint' : 'arr-acc'})`} />
       {label && (
-        <foreignObject x={midX - 30} y={midY - 10} width="60" height="20">
-          <div className="flex items-center justify-center bg-[#111418] border border-white/5 rounded px-1 shadow-sm">
-            <span className="text-[8px] font-mono font-bold uppercase text-white" style={{ color }}>{label}</span>
+        <foreignObject x={mx - 36} y={my - 12} width="72" height="24">
+          <div className="flex items-center justify-center px-2 py-1 rounded-full bg-ink-900/80 border border-white/[0.07] backdrop-blur-md">
+            <span className="text-[9px] font-mono tracking-[0.15em] uppercase" style={{ color }}>{label}</span>
           </div>
         </foreignObject>
       )}
@@ -286,37 +223,72 @@ const ConnectionLine: React.FC<{ start: any, end: any, label?: string, color: st
   );
 };
 
-const NodeCard: React.FC<{ icon: string, title: string, subtitle: string, desc: string, type: 'core' | 'managed', width?: string, onClick?: () => void }> = ({ icon, title, subtitle, desc, type, width = 'w-56', onClick }) => (
-  <div 
-    onClick={onClick}
-    className={`${width} bg-[#1b222a] border ${type === 'core' ? 'border-[#283039]' : 'border-accent-teal/30'} p-4 rounded-xl shadow-2xl transition-all hover:border-primary/50 group text-white`}
-  >
-    <div className="flex items-center gap-3 mb-3">
-      <div className={`size-10 rounded-lg flex items-center justify-center ${type === 'core' ? 'bg-primary/20 text-primary' : 'bg-accent-teal/20 text-accent-teal'}`}>
-        <span className="material-symbols-outlined">{icon}</span>
+const NodeCard: React.FC<{ icon: string; title: string; subtitle: string; desc: string; tone: 'core' | 'managed'; w: number; onClick?: () => void }> =
+  ({ icon, title, subtitle, desc, tone, w, onClick }) => (
+  <div onClick={onClick} className="bezel-shell cursor-pointer transition-transform duration-700 ease-spring hover:scale-[1.01]" style={{ width: w }}>
+    <div className={`bezel-core p-5 ${tone === 'managed' ? 'ring-1 ring-accent-mint/20' : ''}`}>
+      <div className="flex items-center gap-3 mb-3">
+        <div className={`size-10 rounded-xl flex items-center justify-center border ${
+          tone === 'core' ? 'bg-accent/[0.10] border-accent/25 text-accent'
+                          : 'bg-accent-mint/[0.10] border-accent-mint/25 text-accent-mint'
+        }`}>
+          <i className={`${icon} text-[18px]`} />
+        </div>
+        <div>
+          <h3 className="text-[13px] font-medium tracking-tight text-chalk">{title}</h3>
+          <p className="text-[10px] tracking-[0.2em] uppercase text-chalk-mute">{subtitle}</p>
+        </div>
       </div>
-      <div>
-        <h3 className="text-sm font-bold group-hover:text-white transition-colors">{title}</h3>
-        <p className="text-[10px] text-[#9dabb9] uppercase font-bold tracking-tight">{subtitle}</p>
-      </div>
+      <p className="text-[11px] text-chalk-dim leading-relaxed">{desc}</p>
     </div>
-    <p className="text-xs text-[#9dabb9] leading-relaxed line-clamp-2">{desc}</p>
   </div>
 );
 
-const SpecCard: React.FC<{ icon: string, title: string, points: any[], color: 'primary' | 'accent-teal' }> = ({ icon, title, points, color }) => (
-  <div className="bg-[#1b222a] border border-[#283039] rounded-xl p-6 hover:shadow-xl transition-all group text-white">
-    <div className="flex items-center gap-3 mb-6">
-      <span className={`material-symbols-outlined ${color === 'primary' ? 'text-primary' : 'text-accent-teal'}`}>{icon}</span>
-      <h4 className="font-bold text-lg">{title}</h4>
-    </div>
-    <div className="space-y-6">
-      {points.map((p, i) => (
-        <div key={i} className={`border-l-2 ${color === 'primary' ? 'border-primary' : 'border-accent-teal'} pl-4`}>
-          <p className="text-sm font-bold mb-1">{p.label}</p>
-          <p className="text-xs text-[#9dabb9] leading-relaxed">{p.desc}</p>
+const Pip: React.FC<{ icon: string; label: string }> = ({ icon, label }) => (
+  <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/[0.03] border border-white/[0.05]">
+    <i className={`${icon} text-[12px] text-accent`} />
+    <span className="text-[11px] text-chalk-dim tracking-tight">{label}</span>
+  </div>
+);
+
+const MiniTile: React.FC<{ label: string; value: string }> = ({ label, value }) => (
+  <div className="rounded-xl bg-white/[0.03] border border-white/[0.05] p-3 text-center">
+    <p className="text-[9px] tracking-[0.2em] uppercase text-chalk-mute">{label}</p>
+    <p className="text-[12px] font-medium text-chalk mt-1">{value}</p>
+  </div>
+);
+
+const Legend: React.FC<{ color: string; label: string }> = ({ color, label }) => (
+  <div className="flex items-center gap-2 text-[10px] tracking-[0.2em] uppercase text-chalk-dim font-medium">
+    <span className="size-2 rounded-full" style={{ background: color, boxShadow: `0 0 8px ${color}` }} />
+    {label}
+  </div>
+);
+
+const SpecCard: React.FC<{ icon: string; eyebrow: string; title: string; tone: 'accent' | 'mint'; points: { l: string; d: string }[] }> =
+  ({ icon, eyebrow, title, tone, points }) => (
+  <div className="bezel-shell">
+    <div className="bezel-core p-6">
+      <div className="flex items-center gap-3 mb-6">
+        <div className={`size-10 rounded-xl flex items-center justify-center border ${
+          tone === 'accent' ? 'bg-accent/[0.10] border-accent/25 text-accent'
+                            : 'bg-accent-mint/[0.10] border-accent-mint/25 text-accent-mint'
+        }`}>
+          <i className={`${icon} text-[18px]`} />
         </div>
-      ))}
+        <div>
+          <p className="text-[10px] tracking-[0.25em] uppercase text-chalk-mute font-medium">{eyebrow}</p>
+          <h4 className="text-[18px] font-medium tracking-tightest text-chalk">{title}</h4>
+        </div>
+      </div>
+      <div className="space-y-5">
+        {points.map((p, i) => (
+          <div key={i} className={`pl-4 border-l ${tone === 'accent' ? 'border-accent/40' : 'border-accent-mint/40'}`}>
+            <p className="text-[13px] font-medium text-chalk mb-1 tracking-tight">{p.l}</p>
+            <p className="text-[11px] text-chalk-mute leading-relaxed">{p.d}</p>
+          </div>
+        ))}
+      </div>
     </div>
   </div>
 );

@@ -1,656 +1,384 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useToast, useIndexing } from '../context/GlobalContext';
 import api, { CollectionStats, DocumentInput } from '../services/api';
 
 type PipelineStage = 'idle' | 'received' | 'parsing' | 'chunking' | 'embedding' | 'upserting' | 'complete' | 'error';
 
+const STAGES: { key: Exclude<PipelineStage, 'idle' | 'complete' | 'error'>; label: string; icon: string }[] = [
+  { key: 'received',  label: 'Receive',  icon: 'ph-tray-arrow-down' },
+  { key: 'parsing',   label: 'Parse',    icon: 'ph-code' },
+  { key: 'chunking',  label: 'Chunk',    icon: 'ph-scissors' },
+  { key: 'embedding', label: 'Embed',    icon: 'ph-sparkle' },
+  { key: 'upserting', label: 'Persist',  icon: 'ph-database' },
+];
+
 const IndexingView: React.FC = () => {
   const { showToast } = useToast();
-  const { document: savedDocument, setDocument, activityLogs, addActivityLog, clearActivityLogs } = useIndexing();
-  
-  // Use context values for form state (persists across navigation)
-  const [wikiUrl, setWikiUrl] = useState(savedDocument.wikiUrl);
-  const [textContent, setTextContent] = useState(savedDocument.textContent);
-  const [sourceName, setSourceName] = useState(savedDocument.sourceName);
-  
-  const [searchQuery, setSearchQuery] = useState('');
+  const { document: saved, setDocument, activityLogs, addActivityLog, clearActivityLogs } = useIndexing();
+
+  const [wikiUrl, setWikiUrl] = useState(saved.wikiUrl);
+  const [textContent, setTextContent] = useState(saved.textContent);
+  const [sourceName, setSourceName] = useState(saved.sourceName);
   const [isIndexing, setIsIndexing] = useState(false);
   const [stats, setStats] = useState<CollectionStats | null>(null);
-  const [pipelineStage, setPipelineStage] = useState<PipelineStage>('idle');
-  const [progressPercent, setProgressPercent] = useState(0);
+  const [stage, setStage] = useState<PipelineStage>('idle');
+  const [pct, setPct] = useState(0);
+  const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Save form state to context when values change
-  useEffect(() => {
-    setDocument({ sourceName, textContent, wikiUrl });
-  }, [sourceName, textContent, wikiUrl, setDocument]);
-
-  // Fetch stats on mount and after indexing
-  useEffect(() => {
-    fetchStats();
-  }, []);
+  useEffect(() => { setDocument({ sourceName, textContent, wikiUrl }); }, [sourceName, textContent, wikiUrl, setDocument]);
+  useEffect(() => { fetchStats(); }, []);
 
   const fetchStats = async () => {
-    try {
-      const data = await api.getStats();
-      setStats(data);
-    } catch (error) {
-      console.error('Failed to fetch stats:', error);
-    }
+    try { setStats(await api.getStats()); } catch (e) { console.error(e); }
   };
 
-  // Simulate pipeline stages with realistic timing
-  const runPipelineAnimation = useCallback(async (success: boolean = true) => {
-    const stages: { stage: PipelineStage; percent: number; delay: number }[] = [
-      { stage: 'received', percent: 10, delay: 300 },
-      { stage: 'parsing', percent: 25, delay: 500 },
-      { stage: 'chunking', percent: 45, delay: 800 },
-      { stage: 'embedding', percent: 70, delay: 1500 },
-      { stage: 'upserting', percent: 90, delay: 1000 },
-      { stage: success ? 'complete' : 'error', percent: 100, delay: 300 },
+  const animatePipeline = useCallback(async (success = true) => {
+    const steps: { stage: PipelineStage; pct: number; delay: number }[] = [
+      { stage: 'received',  pct: 12, delay: 280 },
+      { stage: 'parsing',   pct: 28, delay: 480 },
+      { stage: 'chunking',  pct: 48, delay: 700 },
+      { stage: 'embedding', pct: 74, delay: 1300 },
+      { stage: 'upserting', pct: 92, delay: 900 },
+      { stage: success ? 'complete' : 'error', pct: 100, delay: 280 },
     ];
-
-    for (const { stage, percent, delay } of stages) {
-      setPipelineStage(stage);
-      setProgressPercent(percent);
-      await new Promise(resolve => setTimeout(resolve, delay));
-      if (stage === 'error') break;
+    for (const s of steps) {
+      setStage(s.stage); setPct(s.pct);
+      await new Promise(r => setTimeout(r, s.delay));
+      if (s.stage === 'error') break;
     }
   }, []);
 
-  const handleIndex = async () => {
+  const indexDocument = async () => {
     if (!textContent.trim() || !sourceName.trim()) {
-      showToast('Please provide source name and content', 'error');
-      return;
+      return showToast('Source name and content are required', 'error');
     }
-
-    setIsIndexing(true);
-    setPipelineStage('received');
-    setProgressPercent(0);
-    showToast(`Started indexing: ${sourceName}`, 'info');
-
-    const startTime = Date.now();
-
-    // Start pipeline animation
-    const animationPromise = runPipelineAnimation(true);
+    setIsIndexing(true); setStage('received'); setPct(0);
+    showToast(`Indexing: ${sourceName}`, 'info');
+    const start = Date.now();
+    const anim = animatePipeline(true);
 
     try {
-      const docInput: DocumentInput = {
-        source: sourceName,
-        content: textContent,
-        url: wikiUrl || undefined,
-        metadata: { indexed_via: 'web_ui', timestamp: new Date().toISOString() }
+      const doc: DocumentInput = {
+        source: sourceName, content: textContent, url: wikiUrl || undefined,
+        metadata: { indexed_via: 'web_ui', timestamp: new Date().toISOString() },
       };
-
-      const response = await api.indexDocuments([docInput]);
-      
-      // Wait for animation to complete
-      await animationPromise;
-      
-      const duration = ((Date.now() - startTime) / 1000).toFixed(1);
-
-      if (response.successful > 0) {
-        showToast(`Successfully indexed ${response.total_chunks} chunks!`, 'success');
-        
-        // Add to activity log (persisted in context)
-        addActivityLog({
-          name: sourceName,
-          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          duration: `${duration}s`,
-          status: 'SUCCESS',
-          icon: 'description',
-          chunks: response.total_chunks
-        });
-
-        // Clear form after successful indexing
-        setTextContent('');
-        setSourceName('');
-        setWikiUrl('');
-        
-        // Refresh stats
+      const res = await api.indexDocuments([doc]);
+      await anim;
+      const dur = ((Date.now() - start) / 1000).toFixed(1);
+      if (res.successful > 0) {
+        showToast(`Indexed — ${res.total_chunks} chunks`, 'success');
+        addActivityLog({ name: sourceName, time: nowTime(), duration: `${dur}s`, status: 'SUCCESS', icon: 'ph-file-text', chunks: res.total_chunks });
+        setTextContent(''); setSourceName(''); setWikiUrl('');
         await fetchStats();
       } else {
-        setPipelineStage('error');
-        showToast('Indexing failed: ' + (response.details[0]?.message || 'Unknown error'), 'error');
-        
-        addActivityLog({
-          name: sourceName,
-          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          duration: '-',
-          status: 'FAILED',
-          icon: 'warning'
-        });
+        setStage('error');
+        showToast('Indexing failed: ' + (res.details[0]?.message || 'Unknown'), 'error');
+        addActivityLog({ name: sourceName, time: nowTime(), duration: '—', status: 'FAILED', icon: 'ph-warning' });
       }
-    } catch (error) {
-      setPipelineStage('error');
-      showToast(`Error: ${error instanceof Error ? error.message : 'Indexing failed'}`, 'error');
-      
-      addActivityLog({
-        name: sourceName,
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        duration: '-',
-        status: 'FAILED',
-        icon: 'warning'
-      });
+    } catch (err) {
+      setStage('error');
+      showToast(err instanceof Error ? err.message : 'Indexing failed', 'error');
+      addActivityLog({ name: sourceName, time: nowTime(), duration: '—', status: 'FAILED', icon: 'ph-warning' });
     } finally {
       setIsIndexing(false);
-      // Reset pipeline after delay
-      setTimeout(() => {
-        setPipelineStage('idle');
-        setProgressPercent(0);
-      }, 2000);
+      setTimeout(() => { setStage('idle'); setPct(0); }, 2000);
     }
   };
 
-  const handleFileUpload = () => {
-    fileInputRef.current?.click();
-  };
-
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const validTypes = [
-      'text/plain',
-      'application/pdf',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'text/markdown'
-    ];
-    
-    const isValid = validTypes.includes(file.type) || 
-                    file.name.endsWith('.txt') || 
-                    file.name.endsWith('.md') ||
-                    file.name.endsWith('.pdf') ||
-                    file.name.endsWith('.docx');
-
-    if (!isValid) {
-      showToast('Please upload a TXT, MD, PDF, or DOCX file', 'error');
-      return;
-    }
-
-    showToast(`Reading file: ${file.name}...`, 'info');
-
+  const fetchUrl = async () => {
+    if (!wikiUrl.startsWith('http')) return showToast('URL must start with http(s)://', 'error');
+    setIsIndexing(true); setStage('received'); setPct(0);
+    showToast(`Fetching: ${wikiUrl}`, 'info');
+    const start = Date.now();
+    const anim = animatePipeline(true);
     try {
-      // Set source name from filename
-      const fileName = file.name.replace(/\.[^/.]+$/, '').replace(/[^a-zA-Z0-9]/g, '_');
-      setSourceName(fileName);
-
-      // For all files, use the backend upload API to ensure consistent extraction
-      if (file.type === 'text/plain' || file.name.endsWith('.txt') || file.name.endsWith('.md')) {
-        const text = await file.text();
-        setTextContent(text);
-        showToast(`File loaded: ${text.length.toLocaleString()} characters`, 'success');
+      const res = await api.indexUrl(wikiUrl);
+      await anim;
+      const dur = ((Date.now() - start) / 1000).toFixed(1);
+      if (res.successful > 0) {
+        showToast('URL indexed', 'success');
+        addActivityLog({ name: wikiUrl.replace(/^https?:\/\//, '').slice(0, 32) + '…', time: nowTime(), duration: `${dur}s`, status: 'SUCCESS', icon: 'ph-globe', chunks: res.total_chunks });
+        setWikiUrl(''); await fetchStats();
       } else {
-        // For PDF, DOCX and others, use backend extraction
-        showToast(`Extracting text from ${file.name.split('.').pop()?.toUpperCase()}...`, 'info');
-        const response = await api.uploadFile(file);
-        setTextContent(response.text);
-        showToast(`Extraction successful: ${response.char_count.toLocaleString()} characters`, 'success');
+        setStage('error'); showToast('Failed to index URL', 'error');
       }
+    } catch (err) {
+      setStage('error');
+      showToast(err instanceof Error ? err.message : 'URL fetch failed', 'error');
+    } finally {
+      setIsIndexing(false);
+      setTimeout(() => { setStage('idle'); setPct(0); }, 2000);
+    }
+  };
 
-      // Set URL if available
-      setWikiUrl('');
-
-    } catch (error) {
+  const readFile = async (file: File) => {
+    const valid = file.type.startsWith('text/') || /\.(txt|md|pdf|docx)$/i.test(file.name);
+    if (!valid) return showToast('TXT, MD, PDF or DOCX only', 'error');
+    showToast(`Reading ${file.name}…`, 'info');
+    try {
+      setSourceName(file.name.replace(/\.[^/.]+$/, '').replace(/[^a-zA-Z0-9]/g, '_'));
+      if (file.type === 'text/plain' || /\.(txt|md)$/i.test(file.name)) {
+        const t = await file.text();
+        setTextContent(t);
+        showToast(`Loaded ${t.length.toLocaleString()} characters`, 'success');
+      } else {
+        const r = await api.uploadFile(file);
+        setTextContent(r.text);
+        showToast(`Extracted ${r.char_count.toLocaleString()} characters`, 'success');
+      }
+    } catch {
       showToast('Failed to read file', 'error');
     }
-
-    // Reset file input
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
   };
 
-  const handleFetchUrl = async () => {
-    if (!wikiUrl.trim()) {
-      showToast('Please enter a URL first', 'error');
-      return;
-    }
-
-    if (!wikiUrl.startsWith('http')) {
-      showToast('Please enter a valid URL starting with http:// or https://', 'error');
-      return;
-    }
-
-    setIsIndexing(true);
-    setPipelineStage('received');
-    setProgressPercent(0);
-    showToast(`Accessing URL: ${wikiUrl}`, 'info');
-
-    const startTime = Date.now();
-    const animationPromise = runPipelineAnimation(true);
-
-    try {
-      const response = await api.indexUrl(wikiUrl);
-      
-      await animationPromise;
-      const duration = ((Date.now() - startTime) / 1000).toFixed(1);
-
-      if (response.successful > 0) {
-        showToast(`Successfully indexed content from URL!`, 'success');
-        
-        addActivityLog({
-          name: wikiUrl.replace(/^https?:\/\//, '').substring(0, 30) + '...',
-          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          duration: `${duration}s`,
-          status: 'SUCCESS',
-          icon: 'language',
-          chunks: response.total_chunks
-        });
-
-        setWikiUrl('');
-        await fetchStats();
-      } else {
-        setPipelineStage('error');
-        showToast('Failed to index URL: ' + (response.details[0]?.message || 'Unknown error'), 'error');
-      }
-    } catch (error) {
-      setPipelineStage('error');
-      showToast(`Error: ${error instanceof Error ? error.message : 'URL access failed'}`, 'error');
-    } finally {
-      setIsIndexing(false);
-      setTimeout(() => {
-        setPipelineStage('idle');
-        setProgressPercent(0);
-      }, 2000);
-    }
-  };
-
-  const exportActivityLog = () => {
-    if (activityLogs.length === 0) {
-      showToast('No activity to export', 'info');
-      return;
-    }
-
-    const csvContent = [
-      'Document,Time,Duration,Status,Chunks',
-      ...activityLogs.map(log => `"${log.name}","${log.time}","${log.duration}","${log.status}","${log.chunks || '-'}"`)
-    ].join('\n');
-
-    const blob = new Blob([csvContent], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `indexing-activity-${new Date().toISOString().split('T')[0]}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    showToast('Activity log exported', 'success');
-  };
-
-  const getStageStatus = (stage: PipelineStage, currentStage: PipelineStage): 'done' | 'active' | 'pending' => {
-    const stageOrder: PipelineStage[] = ['received', 'parsing', 'chunking', 'embedding', 'upserting', 'complete'];
-    const currentIndex = stageOrder.indexOf(currentStage);
-    const stageIndex = stageOrder.indexOf(stage);
-    
-    if (currentStage === 'idle') return 'pending';
-    if (currentStage === 'error' && stageIndex <= currentIndex) return 'done';
-    if (stageIndex < currentIndex) return 'done';
-    if (stageIndex === currentIndex) return 'active';
-    return 'pending';
+  const onDrop = (e: React.DragEvent) => {
+    e.preventDefault(); setDragOver(false);
+    const f = e.dataTransfer.files?.[0];
+    if (f) readFile(f);
   };
 
   return (
-    <div className="flex-1 flex flex-col p-8 overflow-y-auto no-scrollbar">
-      {/* Hidden file input */}
-      <input
-        type="file"
-        ref={fileInputRef}
-        onChange={handleFileChange}
-        accept=".txt,.md,.pdf,.docx"
-        className="hidden"
-      />
+    <div className="px-4 md:px-8 pb-24 max-w-7xl mx-auto">
+      {/* Header */}
+      <motion.div
+        initial={{ opacity: 0, y: 16, filter: 'blur(6px)' }}
+        animate={{ opacity: 1, y: 0, filter: 'blur(0)' }}
+        transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
+        className="mb-12"
+      >
+        <span className="eyebrow">Knowledge Pipeline</span>
+        <h1 className="heading-xl mt-5">
+          Index <em>everything</em>.<br />
+          Retrieve nothing irrelevant.
+        </h1>
+        <p className="mt-5 text-chalk-dim text-base max-w-xl leading-relaxed">
+          Drop a document, paste a URL, or stream raw text — your knowledge base updates in real time.
+        </p>
+      </motion.div>
 
-      <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-8 gap-4">
-        <div className="flex items-center gap-4">
-          <h1 className="text-2xl font-black">Indexing Dashboard</h1>
-          <span className="bg-emerald-500/10 text-emerald-500 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 border border-emerald-500/20">
-             <div className="size-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
-             System: {stats?.status || 'Loading...'}
-          </span>
-        </div>
-        <div className="flex items-center gap-4 w-full md:w-auto">
-           <div className="relative flex-1 md:flex-none">
-             <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm">search</span>
-             <input 
-              type="text" 
-              placeholder="Search indexes..." 
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="bg-[#1b222a] border-none rounded-lg pl-10 pr-4 py-2 text-sm w-full md:w-64 focus:ring-1 focus:ring-primary" 
-             />
-           </div>
-           <button 
-            onClick={exportActivityLog}
-            className="bg-[#283039] hover:bg-slate-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 text-sm shrink-0 border border-[#3b4754]"
-           >
-             <span className="material-symbols-outlined text-sm">download</span> Export
-           </button>
-           <button 
-            onClick={fetchStats}
-            className="bg-primary hover:bg-primary/90 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 text-sm shrink-0"
-           >
-             <span className="material-symbols-outlined text-sm">refresh</span> Refresh
-           </button>
-        </div>
+      {/* Stats bento — 3 asymmetric tiles */}
+      <div className="grid grid-cols-1 md:grid-cols-6 gap-3 mb-6">
+        <StatTile className="md:col-span-3" eyebrow="Vectors" icon="ph-database"
+                  value={stats?.vector_count?.toLocaleString() || '0'}
+                  hint={stats?.status === 'healthy' ? 'Live · synced' : 'Connecting…'} />
+        <StatTile className="md:col-span-2" eyebrow="Documents" icon="ph-files"
+                  value={stats?.document_count?.toString() || '0'}
+                  hint="In collection" />
+        <StatTile className="md:col-span-1" eyebrow="Session" icon="ph-check-circle"
+                  value={activityLogs.filter(l => l.status === 'SUCCESS').length.toString()}
+                  hint="Indexed" />
       </div>
 
-      {/* Stats Cards - Updated dynamically */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        <StatCard 
-          label="Total Documents" 
-          value={stats?.document_count?.toString() || '0'} 
-          icon="description"
-          highlight={activityLogs.filter(l => l.status === 'SUCCESS').length > 0}
-        />
-        <StatCard 
-          label="Vector Count" 
-          value={stats?.vector_count?.toLocaleString() || '0'} 
-          icon="database"
-          highlight={false}
-        />
-        <StatCard 
-          label="Session Indexed" 
-          value={activityLogs.filter(l => l.status === 'SUCCESS').length.toString()} 
-          icon="check_circle"
-          highlight={activityLogs.filter(l => l.status === 'SUCCESS').length > 0}
-        />
-        <StatCard 
-          label="Total Chunks (Session)" 
-          value={activityLogs.filter(l => l.status === 'SUCCESS').reduce((acc, l) => acc + (l.chunks || 0), 0).toLocaleString()} 
-          icon="memory"
-          highlight={false}
-        />
-      </div>
+      {/* Main bento — drop-zone hero (left, large) + form (right, stacked) */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 mb-6">
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-        <div className="xl:col-span-1 space-y-8">
-          {/* Add Source Form */}
-          <div className="bg-[#1b222a] border border-[#283039] p-6 rounded-xl">
-             <h3 className="text-sm font-bold mb-4">Add New Document</h3>
-             <div className="space-y-4">
-                <div>
-                  <label className="text-[10px] font-bold text-[#9dabb9] uppercase mb-1.5 block">Source Name *</label>
-                  <input 
-                    type="text" 
-                    value={sourceName}
-                    onChange={(e) => setSourceName(e.target.value)}
-                    placeholder="e.g., Company_Handbook_2024" 
-                    className="bg-[#111418] border border-[#283039] rounded-lg px-3 py-2 text-xs w-full focus:ring-1 focus:ring-primary" 
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] font-bold text-[#9dabb9] uppercase mb-1.5 block">Source URL (Optional)</label>
-                  <div className="flex gap-2">
-                    <input 
-                      type="text" 
-                      value={wikiUrl}
-                      onChange={(e) => setWikiUrl(e.target.value)}
-                      placeholder="https://example.com/doc" 
-                      className="bg-[#111418] border border-[#283039] rounded-lg px-3 py-2 text-xs flex-1 focus:ring-1 focus:ring-primary" 
-                    />
-                    <button 
-                      onClick={() => wikiUrl && window.open(wikiUrl, '_blank')}
-                      disabled={!wikiUrl}
-                      title="Open URL"
-                      className="bg-[#283039] text-primary p-2 rounded-lg hover:bg-slate-700 disabled:opacity-50"
-                    >
-                      <span className="material-symbols-outlined text-sm">open_in_new</span>
-                    </button>
-                    <button 
-                      onClick={handleFetchUrl}
-                      disabled={!wikiUrl || isIndexing}
-                      title="Fetch & Index URL content"
-                      className="bg-primary/20 text-primary px-3 py-2 rounded-lg hover:bg-primary/30 disabled:opacity-50 text-[10px] font-bold uppercase transition-colors"
-                    >
-                      {isIndexing ? 'Fetching...' : 'Fetch & Index'}
-                    </button>
-                  </div>
-                </div>
-                <div>
-                  <label className="text-[10px] font-bold text-[#9dabb9] uppercase mb-1.5 block">
-                    Document Content * 
-                    <span className="text-slate-500 ml-2">({textContent.length.toLocaleString()} chars)</span>
-                  </label>
-                  <textarea
-                    value={textContent}
-                    onChange={(e) => setTextContent(e.target.value)}
-                    placeholder="Paste your document text content here..."
-                    rows={6}
-                    className="bg-[#111418] border border-[#283039] rounded-lg px-3 py-2 text-xs w-full focus:ring-1 focus:ring-primary resize-none"
-                  />
-                </div>
-                <div 
-                  onClick={handleFileUpload}
-                  className="border-2 border-dashed border-[#283039] rounded-xl p-6 flex flex-col items-center justify-center gap-3 cursor-pointer hover:bg-white/5 hover:border-primary/50 transition-all group"
-                >
-                   <span className="material-symbols-outlined text-slate-500 text-3xl group-hover:text-primary group-hover:scale-110 transition-all">upload_file</span>
-                   <div className="text-center">
-                      <p className="text-xs font-bold text-[#9dabb9] group-hover:text-white transition-colors">Click to Upload File</p>
-                      <p className="text-[10px] text-slate-600">TXT, MD, PDF, DOCX</p>
-                   </div>
-                </div>
-                <button 
-                  disabled={isIndexing || !textContent.trim() || !sourceName.trim()}
-                  onClick={handleIndex}
-                  className={`w-full py-3 rounded-lg text-sm font-bold shadow-lg shadow-primary/10 transition-all flex items-center justify-center gap-2 ${
-                    isIndexing || !textContent.trim() || !sourceName.trim() ? 'bg-primary/50 cursor-not-allowed' : 'bg-primary hover:bg-primary/90'
-                  }`}
-                >
-                  {isIndexing && <span className="material-symbols-outlined animate-spin text-sm">progress_activity</span>}
-                  {isIndexing ? 'Indexing...' : 'Index Document'}
-                </button>
-             </div>
-          </div>
+        {/* DROP ZONE HERO */}
+        <div
+          onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={onDrop}
+          onClick={() => fileInputRef.current?.click()}
+          className="lg:col-span-7 bezel-shell cursor-pointer group transition-transform duration-700 ease-spring hover:scale-[1.005]"
+        >
+          <input ref={fileInputRef} type="file" accept=".txt,.md,.pdf,.docx" className="hidden"
+                 onChange={(e) => { const f = e.target.files?.[0]; if (f) readFile(f); if (fileInputRef.current) fileInputRef.current.value = ''; }} />
+          <div className={`bezel-core p-12 md:p-16 min-h-[360px] flex flex-col items-center justify-center text-center transition-colors duration-700 ease-spring ${dragOver ? 'bg-accent/[0.06]' : ''}`}>
+            <motion.div
+              animate={{ y: dragOver ? -6 : 0 }}
+              transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
+              className="size-20 rounded-full bg-white/[0.04] border border-white/[0.06] flex items-center justify-center mb-6 group-hover:border-accent/40 transition-colors duration-700"
+            >
+              <i className={`ph-cloud-arrow-up text-[34px] ${dragOver ? 'text-accent' : 'text-chalk-dim group-hover:text-accent'} transition-colors duration-700`} />
+            </motion.div>
+            <h3 className="text-[22px] font-medium tracking-tightest text-chalk">
+              {dragOver ? 'Release to import' : 'Drop a document'}
+            </h3>
+            <p className="text-[13px] text-chalk-mute mt-2 tracking-tight">
+              or click to browse · <span className="font-mono text-chalk-dim">.txt .md .pdf .docx</span>
+            </p>
 
-          {/* Quick Stats */}
-          <div className="bg-[#1b222a] border border-[#283039] p-6 rounded-xl">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-bold">Quick Actions</h3>
-            </div>
-            <div className="space-y-3">
-              <button 
-                onClick={fetchStats}
-                className="w-full flex items-center gap-3 p-3 bg-[#111418] rounded-lg border border-[#283039] hover:border-primary/30 transition-all"
-              >
-                <span className="material-symbols-outlined text-primary text-xl">refresh</span>
-                <span className="text-xs font-bold">Refresh Statistics</span>
-              </button>
-              <button 
-                onClick={exportActivityLog}
-                className="w-full flex items-center gap-3 p-3 bg-[#111418] rounded-lg border border-[#283039] hover:border-primary/30 transition-all"
-              >
-                <span className="material-symbols-outlined text-primary text-xl">download</span>
-                <span className="text-xs font-bold">Export Activity Log</span>
-              </button>
-              <button 
-                onClick={() => {
-                  setTextContent('');
-                  setSourceName('');
-                  setWikiUrl('');
-                  showToast('Form cleared', 'info');
-                }}
-                className="w-full flex items-center gap-3 p-3 bg-[#111418] rounded-lg border border-[#283039] hover:border-primary/30 transition-all"
-              >
-                <span className="material-symbols-outlined text-primary text-xl">clear_all</span>
-                <span className="text-xs font-bold">Clear Form</span>
-              </button>
+            <div className="mt-8 flex items-center gap-2 text-[10px] tracking-[0.25em] uppercase text-chalk-mute font-medium">
+              <span>Auto-chunk</span><span className="text-chalk-ghost">·</span>
+              <span>Embed</span><span className="text-chalk-ghost">·</span>
+              <span>Persist</span>
             </div>
           </div>
         </div>
 
-        <div className="xl:col-span-2 space-y-8">
-          {/* Pipeline Progress - Dynamic updates */}
-          <div className="bg-[#1b222a] border border-[#283039] p-6 rounded-xl">
-            <div className="flex items-center justify-between mb-8">
-              <div className="flex items-center gap-2">
-                <div className={`size-2 rounded-full ${isIndexing ? 'bg-primary animate-ping' : pipelineStage === 'complete' ? 'bg-emerald-500' : pipelineStage === 'error' ? 'bg-red-500' : 'bg-slate-500'}`}></div>
-                <h3 className="text-sm font-bold">Pipeline Progress</h3>
+        {/* FORM SIDE */}
+        <div className="lg:col-span-5 flex flex-col gap-3">
+          <div className="bezel-shell flex-1">
+            <div className="bezel-core p-6 space-y-5">
+              <div>
+                <label className="text-[10px] tracking-[0.2em] uppercase font-medium text-chalk-mute mb-2 block">Source name</label>
+                <input value={sourceName} onChange={(e) => setSourceName(e.target.value)}
+                       placeholder="company_handbook_2024"
+                       className="w-full bg-white/[0.03] border border-white/[0.06] rounded-xl px-4 py-3 text-[13px] text-chalk placeholder:text-chalk-mute focus:border-accent/40 transition-colors duration-500" />
               </div>
-              <p className="text-[10px] text-[#9dabb9] italic font-medium uppercase">
-                {isIndexing ? `Processing: ${sourceName}` : pipelineStage === 'complete' ? 'Last job completed' : pipelineStage === 'error' ? 'Last job failed' : 'No active jobs'}
+
+              <div>
+                <label className="text-[10px] tracking-[0.2em] uppercase font-medium text-chalk-mute mb-2 block">URL <span className="text-chalk-ghost normal-case tracking-tight">(optional)</span></label>
+                <div className="flex gap-2">
+                  <input value={wikiUrl} onChange={(e) => setWikiUrl(e.target.value)}
+                         placeholder="https://…"
+                         className="flex-1 bg-white/[0.03] border border-white/[0.06] rounded-xl px-4 py-3 text-[13px] text-chalk placeholder:text-chalk-mute focus:border-accent/40 transition-colors duration-500" />
+                  <button onClick={fetchUrl} disabled={!wikiUrl || isIndexing}
+                          className="px-4 rounded-xl text-[11px] font-medium tracking-[0.15em] uppercase bg-accent/[0.12] text-accent border border-accent/20 hover:bg-accent/20 disabled:opacity-40 transition-all duration-500">
+                    Fetch
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[10px] tracking-[0.2em] uppercase font-medium text-chalk-mute mb-2 block flex items-center justify-between">
+                  <span>Content</span>
+                  <span className="font-mono normal-case text-chalk-ghost tracking-tight">{textContent.length.toLocaleString()} chars</span>
+                </label>
+                <textarea value={textContent} onChange={(e) => setTextContent(e.target.value)}
+                          rows={5} placeholder="Paste raw text…"
+                          className="w-full bg-white/[0.03] border border-white/[0.06] rounded-xl px-4 py-3 text-[13px] text-chalk placeholder:text-chalk-mute focus:border-accent/40 resize-none transition-colors duration-500 thin-scroll" />
+              </div>
+
+              <button
+                onClick={indexDocument}
+                disabled={isIndexing || !textContent.trim() || !sourceName.trim()}
+                className={`btn-magnetic w-full justify-center ${(isIndexing || !textContent.trim() || !sourceName.trim()) ? 'opacity-40 cursor-not-allowed' : ''}`}
+              >
+                {isIndexing ? 'Indexing…' : 'Index document'}
+                <span className="icon-island"><i className={`${isIndexing ? 'ph-circle-notch animate-spin' : 'ph-arrow-up-right'} text-[14px]`} /></span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Pipeline visualization */}
+      <div className="bezel-shell mb-6">
+        <div className="bezel-core p-6 md:p-8">
+          <div className="flex items-center justify-between mb-8">
+            <div>
+              <span className="eyebrow">Pipeline</span>
+              <p className="mt-3 text-[14px] text-chalk-dim tracking-tight">
+                {isIndexing ? `Processing: ${sourceName || 'document'}` : stage === 'complete' ? 'Last job complete' : stage === 'error' ? 'Last job failed' : 'Idle'}
               </p>
             </div>
-            
-            {/* Progress Bar */}
-            <div className="mb-8">
-              <div className="w-full h-2 bg-[#283039] rounded-full overflow-hidden">
-                <div 
-                  className={`h-full transition-all duration-500 ${pipelineStage === 'error' ? 'bg-red-500' : pipelineStage === 'complete' ? 'bg-emerald-500' : 'bg-primary'}`}
-                  style={{ width: `${progressPercent}%` }}
-                />
-              </div>
-              <div className="flex justify-between mt-2">
-                <span className="text-[10px] text-[#9dabb9]">{progressPercent}%</span>
-                <span className="text-[10px] text-[#9dabb9] capitalize">{pipelineStage === 'idle' ? 'Ready' : pipelineStage}</span>
-              </div>
+            <span className="font-mono text-[11px] text-chalk-mute tracking-tight">{pct}%</span>
+          </div>
+
+          <div className="relative h-[2px] bg-white/[0.06] rounded-full overflow-hidden mb-10">
+            <motion.div
+              animate={{ width: `${pct}%` }}
+              transition={{ duration: 0.6, ease: [0.32, 0.72, 0, 1] }}
+              className={`absolute top-0 left-0 h-full ${stage === 'error' ? 'bg-rose-400' : stage === 'complete' ? 'bg-accent-mint' : 'bg-accent shadow-[0_0_12px_#C9B8FF]'}`}
+            />
+          </div>
+
+          <div className="grid grid-cols-5 gap-2 md:gap-4">
+            {STAGES.map(s => {
+              const status = stageStatus(s.key, stage);
+              return (
+                <div key={s.key} className="flex flex-col items-center gap-3 text-center">
+                  <div className={`size-11 rounded-full flex items-center justify-center transition-all duration-700 ease-spring border ${
+                    status === 'done'   ? 'bg-accent-mint/[0.12] border-accent-mint/40 text-accent-mint' :
+                    status === 'active' ? 'bg-accent/[0.16] border-accent/50 text-accent shadow-[0_0_24px_rgba(201,184,255,0.35)]' :
+                                           'bg-white/[0.03] border-white/[0.06] text-chalk-ghost'
+                  }`}>
+                    <i className={`${status === 'done' ? 'ph-check' : status === 'active' ? 'ph-circle-notch animate-spin' : s.icon} text-[15px]`} />
+                  </div>
+                  <p className={`text-[11px] font-medium tracking-tight ${status === 'pending' ? 'text-chalk-ghost' : 'text-chalk'}`}>
+                    {s.label}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* Activity log */}
+      <div className="bezel-shell">
+        <div className="bezel-core overflow-hidden">
+          <div className="flex items-center justify-between px-6 py-4 border-b border-white/[0.05]">
+            <div className="flex items-center gap-3">
+              <span className="eyebrow">Activity</span>
+              <span className="text-[11px] font-mono text-chalk-mute">{activityLogs.length}</span>
             </div>
-            
-            <div className="flex justify-between relative px-4">
-               {/* Progress line */}
-               <div className="absolute top-5 left-8 right-8 h-[2px] bg-[#283039] z-0">
-                  <div 
-                    className={`h-full transition-all duration-500 ${pipelineStage === 'error' ? 'bg-red-500' : pipelineStage === 'complete' ? 'bg-emerald-500' : 'bg-primary shadow-[0_0_8px_#FFB200]'}`}
-                    style={{ width: `${progressPercent}%` }}
-                  />
-               </div>
-               
-               <ProgressStep 
-                 icon="check_circle" 
-                 label="Received" 
-                 status={getStageStatus('received', pipelineStage)}
-               />
-               <ProgressStep 
-                 icon="code" 
-                 label="Parsing" 
-                 status={getStageStatus('parsing', pipelineStage)}
-               />
-               <ProgressStep 
-                 icon="content_cut" 
-                 label="Chunking" 
-                 status={getStageStatus('chunking', pipelineStage)}
-               />
-               <ProgressStep 
-                 icon="auto_awesome" 
-                 label="Embedding" 
-                 status={getStageStatus('embedding', pipelineStage)}
-               />
-               <ProgressStep 
-                 icon="database" 
-                 label="Vector Upsert" 
-                 status={getStageStatus('upserting', pipelineStage)}
-               />
+            <div className="flex items-center gap-1">
+              <button onClick={fetchStats} title="Refresh stats" className="size-8 rounded-full hover:bg-white/[0.06] flex items-center justify-center text-chalk-mute hover:text-chalk transition-colors duration-500">
+                <i className="ph-arrows-clockwise text-[14px]" />
+              </button>
+              {activityLogs.length > 0 && (
+                <button onClick={() => { if (confirm('Clear all activity?')) clearActivityLogs(); }} title="Clear" className="size-8 rounded-full hover:bg-rose-400/10 flex items-center justify-center text-chalk-mute hover:text-rose-300 transition-colors duration-500">
+                  <i className="ph-trash text-[14px]" />
+                </button>
+              )}
             </div>
           </div>
 
-          {/* Activity Log */}
-          <div className="bg-[#1b222a] border border-[#283039] rounded-xl overflow-hidden mb-10">
-             <div className="px-6 py-4 border-b border-[#283039] flex justify-between items-center">
-                <h3 className="text-sm font-bold">Recent Activity Log ({activityLogs.length})</h3>
-                <div className="flex gap-4">
-                   <button 
-                     onClick={exportActivityLog} 
-                     title="Export activity to CSV"
-                     className="material-symbols-outlined text-slate-500 text-sm hover:text-white transition-colors"
-                   >
-                     download
-                   </button>
-                   {activityLogs.length > 0 && (
-                     <button 
-                       onClick={() => {
-                         if(confirm('Clear all activity logs?')) {
-                           clearActivityLogs();
-                           showToast('Logs cleared', 'info');
-                         }
-                       }} 
-                       title="Clear all logs"
-                       className="material-symbols-outlined text-slate-500 text-sm hover:text-rose-500 transition-colors"
-                     >
-                       delete_sweep
-                     </button>
-                   )}
-                </div>
-             </div>
-             {activityLogs.length > 0 ? (
-               <table className="w-full text-left">
-                  <thead className="bg-[#111418] text-[10px] text-[#9dabb9] uppercase font-black tracking-widest">
-                     <tr>
-                        <th className="px-6 py-3">Document</th>
-                        <th className="px-6 py-3">Time</th>
-                        <th className="px-6 py-3">Duration</th>
-                        <th className="px-6 py-3">Chunks</th>
-                        <th className="px-6 py-3">Status</th>
-                     </tr>
-                  </thead>
-                  <tbody className="text-sm divide-y divide-[#283039]">
-                     {activityLogs.map((log, idx) => (
-                       <ActivityRow key={idx} {...log} />
-                     ))}
-                  </tbody>
-               </table>
-             ) : (
-               <div className="p-12 text-center">
-                 <span className="material-symbols-outlined text-4xl text-slate-600 mb-4">history</span>
-                 <p className="text-sm text-[#9dabb9]">No activity yet. Index a document to see logs here.</p>
-               </div>
-             )}
-          </div>
+          {activityLogs.length === 0 ? (
+            <div className="px-6 py-16 text-center">
+              <i className="ph-clock-counter-clockwise text-[28px] text-chalk-ghost" />
+              <p className="mt-4 text-[12px] text-chalk-mute tracking-tight">No activity yet — index a document to populate this log.</p>
+            </div>
+          ) : (
+            <ul className="divide-y divide-white/[0.04]">
+              <AnimatePresence>
+                {activityLogs.map((log, idx) => (
+                  <motion.li
+                    key={`${log.name}-${idx}`}
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+                    className="px-6 py-3 flex items-center gap-4 hover:bg-white/[0.02] transition-colors duration-500"
+                  >
+                    <i className={`${log.icon || 'ph-file-text'} text-[15px] ${log.status === 'SUCCESS' ? 'text-accent-mint' : 'text-rose-300'}`} />
+                    <span className="flex-1 text-[13px] font-medium text-chalk truncate">{log.name}</span>
+                    <span className="hidden md:inline text-[11px] font-mono text-chalk-mute">{log.time}</span>
+                    <span className="hidden md:inline text-[11px] font-mono text-chalk-mute w-12 text-right">{log.duration}</span>
+                    <span className="hidden md:inline text-[11px] font-mono text-chalk-mute w-12 text-right">{log.chunks ?? '—'}</span>
+                    <span className={`text-[10px] font-medium tracking-[0.18em] uppercase px-2 py-1 rounded-full ${
+                      log.status === 'SUCCESS' ? 'bg-accent-mint/10 text-accent-mint' : 'bg-rose-400/10 text-rose-300'
+                    }`}>{log.status}</span>
+                  </motion.li>
+                ))}
+              </AnimatePresence>
+            </ul>
+          )}
         </div>
       </div>
     </div>
   );
 };
 
-const StatCard: React.FC<{ label: string; value: string; icon: string; highlight: boolean }> = ({ label, value, icon, highlight }) => (
-  <div className={`bg-[#1b222a] border p-6 rounded-xl shadow-sm transition-all group cursor-default ${highlight ? 'border-primary/50 shadow-primary/10' : 'border-[#283039] hover:border-primary/40'}`}>
-    <div className="flex justify-between items-start mb-4">
-      <p className="text-xs font-bold text-[#9dabb9] uppercase tracking-wider">{label}</p>
-      <span className={`material-symbols-outlined text-xl transition-transform group-hover:scale-110 ${highlight ? 'text-primary' : 'text-primary'}`}>{icon}</span>
-    </div>
-    <div className="flex items-end gap-3">
-      <h3 className={`text-2xl font-black truncate ${highlight ? 'text-primary' : ''}`}>{value}</h3>
+const StatTile: React.FC<{ className?: string; eyebrow: string; value: string; hint: string; icon: string }> =
+  ({ className = '', eyebrow, value, hint, icon }) => (
+  <div className={`bezel-shell ${className}`}>
+    <div className="bezel-core p-6 h-full flex flex-col justify-between min-h-[140px]">
+      <div className="flex items-start justify-between">
+        <span className="text-[10px] tracking-[0.25em] uppercase font-medium text-chalk-mute">{eyebrow}</span>
+        <i className={`${icon} text-[18px] text-accent/80`} />
+      </div>
+      <div>
+        <p className="text-[36px] font-medium tracking-editorial text-chalk leading-none">{value}</p>
+        <p className="mt-2 text-[11px] text-chalk-mute tracking-tight">{hint}</p>
+      </div>
     </div>
   </div>
 );
 
-const ProgressStep: React.FC<{ icon: string; label: string; status: 'done' | 'active' | 'pending' }> = ({ icon, label, status }) => (
-  <div className="flex flex-col items-center gap-3 relative z-10 w-1/5">
-     <div className={`size-10 rounded-full flex items-center justify-center transition-all ${
-       status === 'done' ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/20' : 
-       status === 'active' ? 'bg-primary text-white shadow-lg shadow-primary/40 animate-pulse' : 
-       'bg-[#283039] text-slate-600'
-     }`}>
-        <span className={`material-symbols-outlined text-xl ${status === 'active' ? 'animate-spin' : ''}`}>
-          {status === 'done' ? 'check' : status === 'active' ? 'progress_activity' : icon}
-        </span>
-     </div>
-     <div className="text-center">
-        <p className={`text-[11px] font-bold ${status === 'active' ? 'text-white' : status === 'done' ? 'text-[#9dabb9]' : 'text-slate-600'}`}>{label}</p>
-        <p className={`text-[8px] font-black uppercase ${status === 'active' ? 'text-primary' : status === 'done' ? 'text-emerald-500' : 'text-slate-600'}`}>
-          {status === 'done' ? 'COMPLETE' : status === 'active' ? 'IN PROGRESS' : 'PENDING'}
-        </p>
-     </div>
-  </div>
-);
+const stageStatus = (s: PipelineStage, current: PipelineStage): 'done' | 'active' | 'pending' => {
+  const order: PipelineStage[] = ['received', 'parsing', 'chunking', 'embedding', 'upserting', 'complete'];
+  const ci = order.indexOf(current);
+  const si = order.indexOf(s);
+  if (current === 'idle') return 'pending';
+  if (current === 'error' && si <= ci) return 'done';
+  if (si < ci) return 'done';
+  if (si === ci) return 'active';
+  return 'pending';
+};
 
-const ActivityRow: React.FC<{ name: string; time: string; duration: string; status: 'SUCCESS' | 'FAILED'; icon: string; chunks?: number }> = ({ name, time, duration, status, icon, chunks }) => (
-  <tr className="hover:bg-white/5 transition-colors cursor-pointer group">
-    <td className="px-6 py-4">
-       <div className="flex items-center gap-3">
-          <span className="material-symbols-outlined text-slate-500 text-sm group-hover:text-primary transition-colors">{icon}</span>
-          <span className="font-medium group-hover:text-white transition-colors truncate max-w-[200px]">{name}</span>
-       </div>
-    </td>
-    <td className="px-6 py-4 text-slate-500">{time}</td>
-    <td className="px-6 py-4 text-slate-500">{duration}</td>
-    <td className="px-6 py-4 text-slate-500">{chunks || '-'}</td>
-    <td className="px-6 py-4">
-       <span className={`px-2 py-0.5 rounded text-[10px] font-black tracking-widest ${
-         status === 'SUCCESS' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-rose-500/10 text-rose-500'
-       }`}>{status}</span>
-    </td>
-  </tr>
-);
+const nowTime = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
 export default IndexingView;

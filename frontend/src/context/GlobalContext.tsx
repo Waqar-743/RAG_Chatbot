@@ -36,25 +36,28 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   return (
     <ToastContext.Provider value={{ showToast }}>
       {children}
-      <div className="fixed bottom-6 right-6 z-50 space-y-3">
+      <div className="fixed bottom-6 right-6 z-50 space-y-2">
         {toasts.map(toast => (
           <div
             key={toast.id}
-            className={`toast-enter flex items-center gap-3 px-5 py-4 rounded-xl shadow-2xl border backdrop-blur-md ${
+            style={{ animation: 'slideInToast 500ms cubic-bezier(0.16,1,0.3,1) both' }}
+            className={`flex items-center gap-3 px-4 py-3 rounded-2xl backdrop-blur-xl border ${
               toast.type === 'success'
-                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+                ? 'bg-accent-mint/[0.08] border-accent-mint/30 text-accent-mint'
                 : toast.type === 'error'
-                ? 'bg-rose-500/10 border-rose-500/30 text-rose-400'
-                : 'bg-primary/10 border-primary/30 text-primary'
+                ? 'bg-rose-400/[0.08] border-rose-400/30 text-rose-300'
+                : 'bg-accent/[0.08] border-accent/30 text-accent'
             }`}
           >
-            <span className="material-symbols-outlined text-xl">
-              {toast.type === 'success' ? 'check_circle' : toast.type === 'error' ? 'error' : 'info'}
-            </span>
-            <span className="text-sm font-medium text-white">{toast.message}</span>
+            <i className={`text-[16px] ${
+              toast.type === 'success' ? 'ph-check-circle' :
+              toast.type === 'error' ? 'ph-warning-circle' : 'ph-info'
+            }`} />
+            <span className="text-[12px] font-medium tracking-tight text-chalk">{toast.message}</span>
           </div>
         ))}
       </div>
+      <style>{`@keyframes slideInToast { from { opacity:0; transform: translateX(20px) } to { opacity:1; transform: translateX(0) } }`}</style>
     </ToastContext.Provider>
   );
 };

@@ -8,16 +8,28 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime
 import hashlib
 
-from openai import AsyncOpenAI
+from openai import (
+    APIConnectionError,
+    APITimeoutError,
+    AsyncOpenAI,
+    InternalServerError,
+    RateLimitError,
+)
 from qdrant_client import QdrantClient
 from qdrant_client.models import (
-    Distance, 
-    PointStruct, 
+    Distance,
+    PointStruct,
     VectorParams,
-    models
+    models,
 )
 from pymongo import MongoClient
 from motor.motor_asyncio import AsyncIOMotorClient
+from tenacity import (
+    AsyncRetrying,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 from config.settings import settings
 from config.constants import (
@@ -38,6 +50,14 @@ from rag.utils import (
 )
 
 logger = get_logger(__name__)
+
+
+_RETRYABLE = (
+    APIConnectionError,
+    APITimeoutError,
+    InternalServerError,
+    RateLimitError,
+)
 
 
 class RAGIndexer:
@@ -97,35 +117,41 @@ class RAGIndexer:
     
     async def generate_embeddings(self, texts: List[str]) -> List[List[float]]:
         """
-        Generate embeddings for a list of texts using OpenRouter.
-        
-        Args:
-            texts: List of text strings to embed
-            
-        Returns:
-            List of embedding vectors
+        Generate embeddings for a list of texts.
+
+        Batches inputs (settings.embedding_batch_size) and retries each batch on
+        transient errors with exponential backoff. A failure inside a batch
+        propagates so the indexer can mark the document as failed rather than
+        silently writing partial vectors.
         """
         if not texts:
             return []
-        
-        try:
-            logger.debug(f"Generating embeddings for {len(texts)} texts")
-            
-            # OpenRouter embedding request
-            response = await self.openai_client.embeddings.create(
-                model=settings.embedding_model,
-                input=texts
+
+        batch_size = settings.embedding_batch_size
+        all_embeddings: List[List[float]] = []
+
+        for start in range(0, len(texts), batch_size):
+            batch = texts[start:start + batch_size]
+            logger.debug(
+                "embedding.batch start=%d size=%d total=%d", start, len(batch), len(texts)
             )
-            
-            # Extract embeddings from response
-            embeddings = [item.embedding for item in response.data]
-            
-            logger.debug(f"Successfully generated {len(embeddings)} embeddings")
-            return embeddings
-            
-        except Exception as e:
-            logger.error(f"Error generating embeddings: {e}")
-            raise
+
+            async for attempt in AsyncRetrying(
+                stop=stop_after_attempt(settings.embedding_max_retries),
+                wait=wait_exponential(multiplier=0.5, min=0.5, max=8),
+                retry=retry_if_exception_type(_RETRYABLE),
+                reraise=True,
+            ):
+                with attempt:
+                    response = await self.openai_client.embeddings.create(
+                        model=settings.embedding_model,
+                        input=batch,
+                    )
+                    all_embeddings.extend(item.embedding for item in response.data)
+                    break  # success — exit the retry loop
+
+        logger.debug("embedding.done count=%d", len(all_embeddings))
+        return all_embeddings
     
     async def index_document(self, document: Dict[str, Any]) -> Dict[str, Any]:
         """
