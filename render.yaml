@@ -1,0 +1,59 @@
+# ============================================================
+# Render Blueprint — one-click deploy of the FastAPI backend.
+#
+# Usage:
+#   1. Push this repo to GitHub.
+#   2. Open https://render.com/deploy and point it at this repo.
+#      Render auto-detects render.yaml and provisions the service.
+#   3. Fill in the secrets prompted (OpenRouter, Qdrant, Mongo).
+#   4. Backend URL appears as: https://ragnarok-api.onrender.com
+#
+# Free Qdrant Cloud:  https://cloud.qdrant.io  (1GB free)
+# Free MongoDB Atlas: https://cloud.mongodb.com (M0 cluster, 512MB free)
+# OpenRouter API key: https://openrouter.ai/keys
+# ============================================================
+
+services:
+  - type: web
+    name: ragnarok-api
+    runtime: docker
+    plan: free                      # bump to "starter" for always-on
+    region: oregon
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/v1/health
+    autoDeploy: true
+    envVars:
+      - key: APP_HOST
+        value: 0.0.0.0
+      - key: APP_PORT
+        value: "8000"
+      - key: DEBUG
+        value: "false"
+      - key: LOG_LEVEL
+        value: INFO
+
+      # Models (OpenRouter — single key drives both LLM and embeddings)
+      - key: OPENROUTER_API_KEY
+        sync: false                 # prompted on deploy, never logged
+      - key: LLM_MODEL
+        value: deepseek/deepseek-chat
+      - key: EMBEDDING_MODEL
+        value: text-embedding-3-small
+
+      # Vector store (Qdrant Cloud)
+      - key: QDRANT_URL
+        sync: false
+      - key: QDRANT_API_KEY
+        sync: false
+      - key: QDRANT_COLLECTION
+        value: ragnarok_kb
+
+      # Metadata store (MongoDB Atlas)
+      - key: MONGODB_URI
+        sync: false
+      - key: MONGODB_DB
+        value: ragnarok
+
+      # CORS — set to your Vercel URL after first deploy
+      - key: ALLOWED_ORIGINS
+        value: "*"

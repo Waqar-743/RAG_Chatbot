@@ -1,220 +1,143 @@
-#  RAG Chatbot - Production-Ready RAG Application
+# Ragnarok — Grounded Intelligence
 
-A production-ready Retrieval-Augmented Generation (RAG) chatbot built with Python, featuring semantic document search, AI-powered question answering, and source citations.
+A production-grade Retrieval-Augmented Generation (RAG) chatbot.
+Ask questions, get answers cited from **your** indexed documents — not the open web.
 
-##  Features
+> **Stack:** FastAPI · LlamaIndex · Qdrant · MongoDB · React 18 + Vite + Tailwind · DeepSeek (OpenRouter)
 
--  **Semantic Search** - Find relevant documents using vector similarity
--  **AI-Powered Answers** - Generate accurate responses using LLM
--  **Multi-Document Support** - Index and search across multiple documents
--  **Source Citations** - Every answer includes relevant sources
--  **Chat History** - Track conversation history per session
--  **Production-Ready** - Docker support, logging, error handling
--  **REST API** - Clean FastAPI endpoints for easy integration
+---
 
-##  Architecture
+## Features
 
-```
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│   Frontend      │────▶│   FastAPI       │────▶│   RAG Engine    │
-│   (Your HTML)   │     │   Backend       │     │                 │
-└─────────────────┘     └─────────────────┘     └────────┬────────┘
-                                                         │
-                        ┌────────────────────────────────┼────────────────────────────────┐
-                        │                                │                                │
-                        ▼                                ▼                                ▼
-                ┌───────────────┐              ┌─────────────────┐              ┌─────────────────┐
-                │   Qdrant      │              │   OpenRouter    │              │   MongoDB       │
-                │   (Vectors)   │              │   (LLM/Embed)   │              │   (Metadata)    │
-                └───────────────┘              └─────────────────┘              └─────────────────┘
-```
+- **Cited answers** — every response traces back to source chunks with similarity scores
+- **Drag-to-index** — drop a PDF, DOCX, MD, or TXT and the pipeline runs end-to-end
+- **URL ingestion** — paste a link in chat and Ragnarok fetches + indexes inline
+- **Voice input** — Web Speech API for hands-free queries
+- **Live blueprint** — interactive, draggable system topology
+- **Premium UI** — Geist + Instrument Serif, double-bezel components, mesh-gradient backdrop
 
-## 🛠️ Tech Stack
+---
 
-| Component | Technology |
-|-----------|------------|
-| Backend | Python 3.11+, FastAPI |
-| RAG Engine | LlamaIndex |
-| Vector DB | Qdrant Cloud |
-| LLM & Embeddings | OpenRouter (DeepSeek) |
-| Metadata DB | MongoDB Atlas |
-| Containerization | Docker |
+## One-shot deploy (free tier, ~6 min)
 
-## 📁 Project Structure
+The stack splits across three free services:
 
-```
-RAGChatbot/
-├── api/
-│   ├── __init__.py
-│   ├── models.py          # Pydantic request/response models
-│   └── routes.py          # API endpoints
-├── config/
-│   ├── __init__.py
-│   ├── settings.py        # Configuration management
-│   ├── constants.py       # Application constants
-│   └── logging_config.py  # Logging setup
-├── rag/
-│   ├── __init__.py
-│   ├── indexing.py        # Document indexing logic
-│   ├── retrieval.py       # Query & retrieval logic
-│   └── utils.py           # Helper functions
-├── frontend/              # React Frontend
-│   ├── src/
-│   │   ├── views/         # Page components
-│   │   ├── services/      # API client
-│   │   ├── types/         # TypeScript types
-│   │   └── App.tsx        # Main app
-│   ├── package.json
-│   └── vite.config.ts
-├── tests/
-│   ├── test_indexing.py
-│   ├── test_retrieval.py
-│   └── test_integration.py
-├── main.py                # Application entry point
-├── requirements.txt       # Python dependencies
-├── Dockerfile            # Container definition
-├── docker-compose.yml    # Docker Compose config
-├── .env.example          # Environment template
-└── README.md             # This file
-```
+| Layer    | Provider          | Free tier      |
+|----------|-------------------|----------------|
+| Frontend | Vercel            | unlimited      |
+| Backend  | Render            | 750 hr/mo      |
+| Vectors  | Qdrant Cloud      | 1 GB           |
+| Metadata | MongoDB Atlas     | 512 MB (M0)    |
+| Models   | OpenRouter        | pay-per-call   |
 
-##  Quick Start
+### Step 1 — Provision the data plane (one-time, ~3 min)
 
-### 1. Clone & Setup
+1. **Qdrant Cloud** → https://cloud.qdrant.io → free cluster → copy `URL` + `API key`
+2. **MongoDB Atlas** → https://cloud.mongodb.com → M0 cluster → "Connect" → connection string (whitelist `0.0.0.0/0`)
+3. **OpenRouter** → https://openrouter.ai/keys → API key
+
+### Step 2 — Push & deploy
 
 ```bash
-cd RAGChatbot
+# From the project root:
+git init
+git add .
+git commit -m "Ragnarok initial deploy"
+gh repo create ragnarok --public --source=. --remote=origin --push
 
-# Create virtual environment
+# Backend → Render (uses render.yaml automatically)
+# Open this URL, click "Deploy", paste secrets when prompted:
+#   https://render.com/deploy?repo=https://github.com/<you>/ragnarok
+
+# Frontend → Vercel (one command from /frontend)
+cd frontend
+npx vercel --prod
+# In the Vercel dashboard, set:
+#   VITE_API_URL = https://ragnarok-api.onrender.com   (your Render URL)
+# then redeploy.
+```
+
+That's it — Vercel returns a live URL on completion.
+
+> **No `gh` CLI?** Install with `winget install GitHub.cli` (Windows) or `brew install gh` (macOS), then `gh auth login`. Alternatively create the repo manually on github.com and `git remote add origin <url>`.
+
+---
+
+## Local development
+
+```bash
+# Backend (Python 3.11+)
 python -m venv venv
-venv\Scripts\activate  # Windows
-# source venv/bin/activate  # Linux/Mac
-
-# Install dependencies
+.\venv\Scripts\Activate.ps1                # PowerShell
+# source venv/bin/activate                 # macOS / Linux
 pip install -r requirements.txt
-```
+copy .env.example .env                     # fill in secrets
+python main.py                             # → http://localhost:8000
 
-### 2. Configure Environment
-
-```bash
-# Copy environment template
-copy .env.example .env
-
-# Edit .env with your API keys
-```
-
-### 3. Run the Application
-
-```bash
-# Development mode
-python main.py
-
-# Or with uvicorn
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
-```
-
-### 4. Access the API
-
-- **API Docs**: http://localhost:8000/docs
-- **Health Check**: http://localhost:8000/api/v1/health
-
-### 5. Run the Frontend
-
-```bash
+# Frontend (Node 18+)
 cd frontend
 npm install
-npm run dev
+npm run dev                                # → http://localhost:3000
 ```
 
-- **Frontend**: http://localhost:5173
+The Vite dev server proxies `/api/*` → `localhost:8000` automatically.
 
-##  Docker Deployment
+### Local stack via Docker (optional)
 
 ```bash
-# Build and run
-docker-compose up --build
-
-# Run in background
-docker-compose up -d
+docker-compose up -d                       # spins up Qdrant + Mongo locally
 ```
 
-## 📡 API Endpoints
+---
 
-### Query (Ask Questions)
-```bash
-POST /api/v1/query
-{
-    "query": "What is machine learning?",
-    "session_id": "user123",  # optional
-    "top_k": 5                # optional
-}
+## Project layout
+
+```
+ragnarok/
+├── api/                  # FastAPI routes & Pydantic models
+├── rag/                  # Indexer, retriever, prompt orchestration
+├── config/               # Settings + structured logging
+├── frontend/             # React 18 + Vite + Tailwind
+│   ├── src/views/        # ChatView · IndexingView · ArchitectureView
+│   └── vercel.json       # Vercel config
+├── tests/                # pytest suites
+├── render.yaml           # Render Blueprint (backend)
+├── Dockerfile            # Backend container
+└── docker-compose.yml    # Local Qdrant + Mongo
 ```
 
-### Index Documents
-```bash
-POST /api/v1/index
-{
-    "documents": [
-        {
-            "source": "ml_guide",
-            "content": "Machine learning is a subset of AI...",
-            "url": "https://example.com/ml",
-            "metadata": {"type": "article"}
-        }
-    ]
-}
+---
+
+## Environment variables
+
+See `.env.example` for the full list. Required:
+
+```env
+OPENROUTER_API_KEY=sk-or-v1-…
+QDRANT_URL=https://xxx.cloud.qdrant.io:6333
+QDRANT_API_KEY=…
+MONGODB_URI=mongodb+srv://user:pass@cluster.mongodb.net/
+LLM_MODEL=deepseek/deepseek-chat
+EMBEDDING_MODEL=text-embedding-3-small
 ```
 
-### Search Documents
-```bash
-POST /api/v1/search
-{
-    "query": "neural networks",
-    "top_k": 10
-}
+Frontend (Vercel dashboard or `frontend/.env.local`):
+
+```env
+VITE_API_URL=https://ragnarok-api.onrender.com
 ```
 
-### Health Check
-```bash
-GET /api/v1/health
-```
+---
 
-### Collection Stats
-```bash
-GET /api/v1/stats
-```
-
-## 🔧 Configuration
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `OPENROUTER_API_KEY` | OpenRouter API key | Required |
-| `QDRANT_API_KEY` | Qdrant Cloud API key | Required |
-| `QDRANT_URL` | Qdrant Cloud URL | Required |
-| `MONGO_URI` | MongoDB connection URI | Required |
-| `LLM_MODEL` | LLM model name | `deepseek/deepseek-chat` |
-| `EMBEDDING_MODEL` | Embedding model | `openai/text-embedding-3-small` |
-| `TOP_K` | Documents to retrieve | `5` |
-| `CHUNK_SIZE` | Text chunk size | `512` |
-
-## 🧪 Testing
+## Testing
 
 ```bash
-# Run all tests
-pytest
-
-# Run with coverage
-pytest --cov=. --cov-report=html
+pytest -v                                  # all suites
+pytest tests/test_retrieval.py             # retrieval only
 ```
 
-## 📝 License
+---
 
-MIT License
+## License
 
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Commit your changes
-4. Push to the branch
-5. Open a Pull Request
+MIT.

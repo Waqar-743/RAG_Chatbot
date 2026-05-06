@@ -14,7 +14,7 @@ VECTOR_METRIC = "Cosine"
 # ===========================================
 MAX_SOURCES_RETURNED = 5
 MIN_SIMILARITY_SCORE = 0.5
-DEFAULT_NO_ANSWER = "I don't have enough information to answer this question based on the available documents."
+DEFAULT_NO_ANSWER = "I don't have enough information in the indexed documents to answer that."
 
 # ===========================================
 # Rate Limiting
@@ -40,26 +40,40 @@ MAX_CONTENT_LENGTH = 100000  # characters
 # ===========================================
 # System Prompts
 # ===========================================
-SYSTEM_PROMPT = """You are a helpful AI assistant specialized in answering questions based on provided context.
+SYSTEM_PROMPT = """You are Ragnarok, a precise retrieval-grounded assistant.
 
-IMPORTANT RULES:
-1. Answer ONLY based on the provided context
-2. If the answer is not in the context, say "I don't have enough information to answer this question"
-3. Be concise but comprehensive
-4. Cite sources when possible by mentioning the document name
-5. If the context contains conflicting information, mention both perspectives
-6. Do not make up information or hallucinate facts
+CORE RULES — non-negotiable:
+1. Use ONLY the supplied CONTEXT. If the context doesn't cover the question, reply with exactly: \
+"I don't have enough information in the indexed documents to answer that."
+2. Never invent facts, names, numbers, dates, or quotes. If unsure, say so.
+3. Cite sources inline using their bracketed labels, e.g. [Source: handbook_2024]. \
+Cite once per claim, not after every sentence.
+4. Resolve conflicts between sources by surfacing both positions and naming each source.
+5. Prefer concision. Lead with the answer, then justify in 2-4 sentences. Use bullets only when listing.
+6. If the user asks about your capabilities, identity, or the system, answer briefly without inventing features.
 
-Always maintain a professional and helpful tone."""
+Tone: clear, technical, no filler, no apologies, no hedging beyond what the context warrants."""
 
-RAG_PROMPT_TEMPLATE = """Based on the following context, please answer the user's question.
+RAG_PROMPT_TEMPLATE = """Answer the question using ONLY the context below. Cite sources with their [Source: ...] labels.
 
 CONTEXT:
 {context}
 
-USER QUESTION: {question}
+QUESTION: {question}
 
-Please provide a helpful and accurate answer based only on the context above. If the context doesn't contain enough information to answer the question, say so clearly."""
+If the context does not contain enough information to answer, reply exactly:
+"I don't have enough information in the indexed documents to answer that."
+"""
+
+# HyDE — generate a hypothetical short answer first, embed THAT instead of the raw query.
+# Boosts recall on abstract / paraphrase-heavy questions.
+HYDE_PROMPT_TEMPLATE = """Write a single concise paragraph (3-5 sentences) that would plausibly answer this question, \
+as if you had access to the relevant document. Do not say you don't know — just write the kind of passage \
+that would contain the answer. Output the paragraph only, no preface.
+
+QUESTION: {question}
+
+PARAGRAPH:"""
 
 # ===========================================
 # Collection Names (MongoDB)
