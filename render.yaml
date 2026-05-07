@@ -3,19 +3,20 @@
 #
 # Usage:
 #   1. Push this repo to GitHub.
-#   2. Open https://render.com/deploy and point it at this repo.
-#      Render auto-detects render.yaml and provisions the service.
-#   3. Fill in the secrets prompted (OpenRouter, Qdrant, Mongo).
-#   4. Backend URL appears as: https://ragnarok-api.onrender.com
+#   2. Go to https://dashboard.render.com → New → Blueprint
+#      and connect this repo. Render auto-detects render.yaml.
+#   3. Fill in the four secrets prompted (see sync: false below).
+#   4. After deploy, copy the service URL (e.g. https://rag-chatbot-api.onrender.com)
+#      and add it as VITE_API_URL secret in your GitHub repo settings.
 #
-# Free Qdrant Cloud:  https://cloud.qdrant.io  (1GB free)
-# Free MongoDB Atlas: https://cloud.mongodb.com (M0 cluster, 512MB free)
+# Free Qdrant Cloud:  https://cloud.qdrant.io  (1 GB free)
+# Free MongoDB Atlas: https://cloud.mongodb.com (M0 cluster, 512 MB free)
 # OpenRouter API key: https://openrouter.ai/keys
 # ============================================================
 
 services:
   - type: web
-    name: ragnarok-api
+    name: rag-chatbot-api
     runtime: docker
     plan: free                      # bump to "starter" for always-on
     region: oregon
@@ -23,37 +24,45 @@ services:
     healthCheckPath: /api/v1/health
     autoDeploy: true
     envVars:
-      - key: APP_HOST
-        value: 0.0.0.0
-      - key: APP_PORT
-        value: "8000"
       - key: DEBUG
         value: "false"
       - key: LOG_LEVEL
         value: INFO
 
-      # Models (OpenRouter — single key drives both LLM and embeddings)
+      # OpenRouter — drives both LLM and embeddings
       - key: OPENROUTER_API_KEY
         sync: false                 # prompted on deploy, never logged
+      - key: OPENROUTER_BASE_URL
+        value: https://openrouter.ai/api/v1
       - key: LLM_MODEL
         value: deepseek/deepseek-chat
       - key: EMBEDDING_MODEL
-        value: text-embedding-3-small
+        value: openai/text-embedding-3-small
 
-      # Vector store (Qdrant Cloud)
+      # Qdrant Cloud (vector store)
       - key: QDRANT_URL
         sync: false
       - key: QDRANT_API_KEY
         sync: false
       - key: QDRANT_COLLECTION
-        value: ragnarok_kb
+        value: rag_documents
 
-      # Metadata store (MongoDB Atlas)
-      - key: MONGODB_URI
+      # MongoDB Atlas (chat history / metadata)
+      - key: MONGO_URI
         sync: false
-      - key: MONGODB_DB
-        value: ragnarok
+      - key: MONGO_DB_NAME
+        value: rag_db
 
-      # CORS — set to your Vercel URL after first deploy
-      - key: ALLOWED_ORIGINS
-        value: "*"
+      # RAG tuning defaults
+      - key: TOP_K
+        value: "5"
+      - key: SIMILARITY_THRESHOLD
+        value: "0.3"
+      - key: CHUNK_SIZE
+        value: "512"
+      - key: CHUNK_OVERLAP
+        value: "50"
+      - key: TEMPERATURE
+        value: "0.7"
+      - key: MAX_TOKENS
+        value: "2048"

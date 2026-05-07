@@ -77,10 +77,16 @@ app = FastAPI(
     redoc_url="/redoc"
 )
 
-# Configure CORS for frontend integration
+# Configure CORS — allow GitHub Pages and localhost dev server
+_ALLOWED_ORIGINS = [
+    "https://waqar-743.github.io",  # GitHub Pages
+    "http://localhost:3000",         # local Vite dev server
+    "http://localhost:5173",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, specify allowed origins
+    allow_origins=_ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

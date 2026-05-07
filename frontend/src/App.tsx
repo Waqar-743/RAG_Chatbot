@@ -60,7 +60,7 @@ const FloatingNav: React.FC = () => {
         })}
 
         <a
-          href="https://github.com"
+          href="https://github.com/Waqar-743/RAG_Chatbot"
           target="_blank"
           rel="noreferrer"
           className="ml-2 flex items-center gap-1.5 px-3 py-2 rounded-full text-[11px] font-medium text-chalk-dim hover:text-chalk transition-colors duration-500 ease-spring border border-white/[0.06]"
