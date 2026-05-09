@@ -21,9 +21,14 @@ concurrency:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    environment:
+      name: frontend
+      url: ${{ steps.deploy.outputs.url }}
+
     defaults:
       run:
         working-directory: ./frontend
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -41,7 +46,7 @@ jobs:
       - name: Build frontend
         run: npm run build
         env:
-          VITE_API_URL: ${{ secrets.VITE_API_URL }}
+          VITE_API_URL: ${{ secrets.RENDER_SERVICE_URL }}
 
       - name: Install Vercel CLI
         run: npm install --global vercel@latest
@@ -57,20 +62,20 @@ jobs:
         env:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_FRONTEND_PROJECT_ID }}
-          VITE_API_URL: ${{ secrets.VITE_API_URL }}
+          VITE_API_URL: ${{ secrets.RENDER_SERVICE_URL }}
 
       - name: Deploy to Vercel
         id: deploy
         run: |
           if [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            DEPLOY_URL=$(vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }})
+            URL=$(vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }})
           else
-            DEPLOY_URL=$(vercel deploy --prebuilt --token=${{ secrets.VERCEL_TOKEN }})
+            URL=$(vercel deploy --prebuilt --token=${{ secrets.VERCEL_TOKEN }})
           fi
-          echo "url=$DEPLOY_URL" >> $GITHUB_OUTPUT
+          echo "url=$URL" >> $GITHUB_OUTPUT
         env:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_FRONTEND_PROJECT_ID }}
 
       - name: Print live URL
-        run: echo "Frontend live at → ${{ steps.deploy.outputs.url }}"
+        run: echo "Frontend live at ${{ steps.deploy.outputs.url }}"
