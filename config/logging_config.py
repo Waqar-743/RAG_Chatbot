@@ -26,38 +26,41 @@ def setup_logging(
     Returns:
         Configured logger instance
     """
-    # Create logs directory if logging to file
-    if log_file is None:
-        logs_dir = Path("logs")
-        logs_dir.mkdir(exist_ok=True)
-        log_file = logs_dir / f"{app_name}_{datetime.now().strftime('%Y%m%d')}.log"
-    
     # Create logger
     logger = logging.getLogger(app_name)
     logger.setLevel(getattr(logging, log_level.upper()))
-    
+
     # Prevent duplicate handlers
     if logger.handlers:
         return logger
-    
+
     # Log format
     log_format = logging.Formatter(
         fmt="%(asctime)s | %(levelname)-8s | %(name)s:%(funcName)s:%(lineno)d | %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S"
     )
-    
-    # Console handler
+
+    # Console handler (always enabled)
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(getattr(logging, log_level.upper()))
     console_handler.setFormatter(log_format)
     logger.addHandler(console_handler)
-    
-    # File handler
-    file_handler = logging.FileHandler(log_file, encoding="utf-8")
-    file_handler.setLevel(logging.DEBUG)  # Log everything to file
-    file_handler.setFormatter(log_format)
-    logger.addHandler(file_handler)
-    
+
+    # File handler — skipped on read-only filesystems (e.g. Vercel serverless)
+    import os
+    if not os.environ.get("VERCEL"):
+        try:
+            if log_file is None:
+                logs_dir = Path("logs")
+                logs_dir.mkdir(exist_ok=True)
+                log_file = logs_dir / f"{app_name}_{datetime.now().strftime('%Y%m%d')}.log"
+            file_handler = logging.FileHandler(log_file, encoding="utf-8")
+            file_handler.setLevel(logging.DEBUG)
+            file_handler.setFormatter(log_format)
+            logger.addHandler(file_handler)
+        except OSError:
+            pass  # silently skip file logging if filesystem is not writable
+
     return logger
 
 
