@@ -1,0 +1,53 @@
+# Core RAG Dependencies
+llama-index==0.10.68
+llama-index-embeddings-openai==0.1.11
+llama-index-llms-openai==0.1.31
+llama-index-vector-stores-qdrant==0.2.17
+
+# Vector Database
+qdrant-client==1.11.3
+
+# MongoDB
+pymongo==4.8.0
+motor==3.5.1  # Async MongoDB driver
+
+# OpenAI Client (for OpenRouter)
+openai==1.45.0
+
+# Web Framework (API Backend)
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+python-multipart==0.0.9
+mangum==0.17.0           # ASGI adapter for Vercel / AWS Lambda
+
+# Configuration & Utilities
+python-dotenv==1.0.1
+pydantic==2.9.1
+pydantic-settings==2.5.2
+
+# Async HTTP
+aiohttp==3.10.5
+httpx==0.27.2
+beautifulsoup4==4.12.3
+
+# File Processing
+pypdf==4.3.1
+docx2txt==0.9
+tiktoken==0.12.0
+langchain-text-splitters
+
+# Document Processing
+python-docx==1.1.2
+
+# Testing
+pytest==8.3.3
+pytest-asyncio==0.24.0
+
+# Reliability — retries with exponential backoff
+tenacity==8.2.3
+
+# Numerics — for MMR reranking (already pulled by llama-index, pinned for clarity)
+numpy>=1.26,<3
+
+# Logging
+structlog==24.4.0

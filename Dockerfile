@@ -19,7 +19,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for caching
-COPY requirements.txt .
+# Use requirements-full.txt for Docker (includes llama-index + heavy ML deps)
+# Vercel uses the slim requirements.txt at root
+COPY requirements-full.txt requirements.txt
 
 # Install Python dependencies
 RUN pip install --no-cache-dir --upgrade pip && \
