@@ -21,12 +21,13 @@ concurrency:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./frontend
     steps:
-      # ── 1. Source ────────────────────────────────────────────────
       - name: Checkout
         uses: actions/checkout@v4
 
-      # ── 2. Node ──────────────────────────────────────────────────
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -34,49 +35,42 @@ jobs:
           cache: "npm"
           cache-dependency-path: "frontend/package-lock.json"
 
-      # ── 3. Build React app ────────────────────────────────────────
-      - name: Install frontend dependencies
-        working-directory: ./frontend
+      - name: Install dependencies
         run: npm ci
 
       - name: Build frontend
-        working-directory: ./frontend
         run: npm run build
         env:
           VITE_API_URL: ${{ secrets.VITE_API_URL }}
 
-      # ── 4. Vercel deploy ─────────────────────────────────────────
       - name: Install Vercel CLI
         run: npm install --global vercel@latest
 
       - name: Pull Vercel project settings
-        working-directory: ./frontend
-        run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_FRONTEND_TOKEN }}
+        run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
         env:
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_FRONTEND_ORG_ID }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_FRONTEND_PROJECT_ID }}
 
-      - name: Build via Vercel CLI (creates .vercel/output)
-        working-directory: ./frontend
-        run: vercel build --prod --token=${{ secrets.VERCEL_FRONTEND_TOKEN }}
+      - name: Build via Vercel CLI
+        run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
         env:
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_FRONTEND_ORG_ID }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_FRONTEND_PROJECT_ID }}
           VITE_API_URL: ${{ secrets.VITE_API_URL }}
 
-      - name: Deploy to Vercel (production on main, preview on PR)
+      - name: Deploy to Vercel
         id: deploy
-        working-directory: ./frontend
         run: |
           if [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            DEPLOY_URL=$(vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_FRONTEND_TOKEN }})
+            DEPLOY_URL=$(vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }})
           else
-            DEPLOY_URL=$(vercel deploy --prebuilt --token=${{ secrets.VERCEL_FRONTEND_TOKEN }})
+            DEPLOY_URL=$(vercel deploy --prebuilt --token=${{ secrets.VERCEL_TOKEN }})
           fi
           echo "url=$DEPLOY_URL" >> $GITHUB_OUTPUT
         env:
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_FRONTEND_ORG_ID }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_FRONTEND_PROJECT_ID }}
 
       - name: Print live URL
-        run: echo "🚀 Frontend live at → ${{ steps.deploy.outputs.url }}"
+        run: echo "Frontend live at → ${{ steps.deploy.outputs.url }}"
