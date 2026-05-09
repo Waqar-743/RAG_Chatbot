@@ -1,4 +1,4 @@
-name: Deploy Frontend to Vercel
+name: Deploy Frontend to GitHub Pages
 
 on:
   push:
@@ -6,24 +6,23 @@ on:
     paths:
       - "frontend/**"
       - ".github/workflows/deploy-frontend.yml"
-  pull_request:
-    paths:
-      - "frontend/**"
   workflow_dispatch:
 
 permissions:
   contents: read
+  pages: write
+  id-token: write
 
 concurrency:
-  group: "vercel-frontend-${{ github.ref }}"
+  group: "github-pages"
   cancel-in-progress: true
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
     environment:
-      name: frontend
-      url: ${{ steps.deploy.outputs.url }}
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
 
     defaults:
       run:
@@ -43,39 +42,19 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build frontend
+      - name: Build
         run: npm run build
         env:
           VITE_API_URL: ${{ secrets.RENDER_SERVICE_URL }}
 
-      - name: Install Vercel CLI
-        run: npm install --global vercel@latest
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./frontend/dist
 
-      - name: Pull Vercel project settings
-        run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
-        env:
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_FRONTEND_PROJECT_ID }}
-
-      - name: Build via Vercel CLI
-        run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
-        env:
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_FRONTEND_PROJECT_ID }}
-          VITE_API_URL: ${{ secrets.RENDER_SERVICE_URL }}
-
-      - name: Deploy to Vercel
+      - name: Deploy to GitHub Pages
         id: deploy
-        run: |
-          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            URL=$(vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }})
-          else
-            URL=$(vercel deploy --prebuilt --token=${{ secrets.VERCEL_TOKEN }})
-          fi
-          echo "url=$URL" >> $GITHUB_OUTPUT
-        env:
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_FRONTEND_PROJECT_ID }}
+        uses: actions/deploy-pages@v4
 
       - name: Print live URL
-        run: echo "Frontend live at ${{ steps.deploy.outputs.url }}"
+        run: echo "Frontend live at ${{ steps.deploy.outputs.page_url }}"
