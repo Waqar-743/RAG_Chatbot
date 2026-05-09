@@ -4,19 +4,11 @@ FastAPI application with CORS support for frontend integration.
 """
 
 import os
-import uvicorn
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
-from api.routes import router, get_indexer, get_retriever
-from config.settings import settings
-from config.logging_config import setup_logging, get_logger
-
-# Setup logging
-setup_logging(log_level=settings.log_level)
-logger = get_logger(__name__)
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 
 @asynccontextmanager
@@ -24,33 +16,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
     """
     Application lifespan manager.
     Handles startup and shutdown events.
+    NOTE: Kept lightweight for Vercel cold-start performance.
+    RAG components use lazy-loading per request.
     """
-    # Startup
-    logger.info("=" * 50)
-    logger.info("RAG Chatbot API Starting...")
-    logger.info(f"Debug Mode: {settings.debug}")
-    logger.info(f"LLM Model: {settings.llm_model}")
-    logger.info(f"Embedding Model: {settings.embedding_model}")
-    logger.info("=" * 50)
-    
-    # Initialize components on startup (optional - can be lazy loaded)
-    try:
-        indexer = get_indexer()
-        retriever = get_retriever()
-        logger.info("RAG components initialized successfully")
-    except Exception as e:
-        logger.error(f"Failed to initialize RAG components: {e}")
-        # Don't raise - let the app start and handle errors per-request
-    
     yield
-    
-    # Shutdown
-    logger.info("RAG Chatbot API Shutting down...")
-    try:
-        get_indexer().close()
-        get_retriever().close()
-    except Exception as e:
-        logger.error(f"Error during shutdown: {e}")
 
 
 # Create FastAPI application
@@ -58,14 +27,14 @@ app = FastAPI(
     title="RAG Chatbot API",
     description="""
     A Production-Ready Retrieval-Augmented Generation (RAG) Chatbot API.
-    
+
     ## Features
     - 🔍 Semantic document search
     - 🧠 AI-powered question answering
     - 📚 Multi-document support
     - 📊 Source citations
     - 💬 Chat history
-    
+
     ## Endpoints
     - **Query**: Ask questions and get AI-powered answers
     - **Search**: Find similar documents
@@ -80,25 +49,28 @@ app = FastAPI(
 
 # Configure CORS — allow Vercel frontend, GitHub Pages, and local dev
 _BASE_ORIGINS = [
-    "https://waqar-743.github.io",          # GitHub Pages (legacy)
-    "http://localhost:3000",                  # local Vite dev server
+    "https://waqar-743.github.io",           # GitHub Pages frontend
+    "http://localhost:3000",                   # local Vite dev server
     "http://localhost:5173",
+    "https://*.vercel.app",                   # any Vercel preview/prod URL
 ]
 
-# Accept extra origins from env var (comma-separated) — add your Vercel
-# frontend URL here without redeploying: CORS_ORIGINS=https://rag-chatbot.vercel.app
+# Accept extra origins from env var (comma-separated)
+# e.g. CORS_ORIGINS=https://rag-chatbot-frontend.vercel.app
 _extra = os.environ.get("CORS_ORIGINS", "")
 _ALLOWED_ORIGINS = _BASE_ORIGINS + [o.strip() for o in _extra.split(",") if o.strip()]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_ALLOWED_ORIGINS,
+    allow_origin_regex=r"https://.*\.vercel\.app",  # catch all Vercel domains
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Include API routes
+# Include API routes (lazy — avoids heavy imports at module load time)
+from api.routes import router  # noqa: E402
 app.include_router(router, prefix="/api/v1")
 
 
@@ -116,10 +88,12 @@ async def root():
 
 
 if __name__ == "__main__":
+    import uvicorn
+    from config.settings import settings
     uvicorn.run(
         "main:app",
-        host=settings.app_host,
-        port=settings.app_port,
-        reload=settings.debug,
-        log_level=settings.log_level.lower()
+        host=getattr(settings, "app_host", "0.0.0.0"),
+        port=getattr(settings, "app_port", 8000),
+        reload=getattr(settings, "debug", False),
+        log_level=getattr(settings, "log_level", "INFO").lower()
     )

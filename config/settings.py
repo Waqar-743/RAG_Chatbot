@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     # OpenRouter API Configuration
     # ===========================================
     openrouter_api_key: str = Field(
-        ..., 
+        default="",
         description="OpenRouter API key for LLM and embeddings"
     )
     openrouter_base_url: str = Field(
@@ -28,11 +28,11 @@ class Settings(BaseSettings):
     # Qdrant Vector Database Configuration
     # ===========================================
     qdrant_api_key: str = Field(
-        ..., 
+        default="",
         description="Qdrant Cloud API key"
     )
     qdrant_url: str = Field(
-        ..., 
+        default="",
         description="Qdrant Cloud URL"
     )
     qdrant_collection: str = Field(
@@ -44,7 +44,7 @@ class Settings(BaseSettings):
     # MongoDB Configuration
     # ===========================================
     mongo_uri: str = Field(
-        ..., 
+        default="",
         description="MongoDB connection URI"
     )
     mongo_db_name: str = Field(
