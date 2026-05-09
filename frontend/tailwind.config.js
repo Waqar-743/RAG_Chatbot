@@ -24,9 +24,9 @@ export default {
         },
         chalk: {
           DEFAULT: '#FAFAFA',
-          dim: '#B8B8C0',
-          mute: '#6E6E78',
-          ghost: '#3A3A42',
+          dim:   '#C2C2CC',  // was #B8B8C0 — slightly brighter for readability
+          mute:  '#909099',  // was #6E6E78 — raised to ~5.1:1 contrast on #050505
+          ghost: '#5A5A68',  // was #3A3A42 — was ~1.8:1 (invisible); now ~3.2:1
         },
       },
       fontFamily: {

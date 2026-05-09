@@ -283,11 +283,11 @@ const IndexingView: React.FC = () => {
                   <div className={`size-11 rounded-full flex items-center justify-center transition-all duration-700 ease-spring border ${
                     status === 'done'   ? 'bg-accent-mint/[0.12] border-accent-mint/40 text-accent-mint' :
                     status === 'active' ? 'bg-accent/[0.16] border-accent/50 text-accent shadow-[0_0_24px_rgba(201,184,255,0.35)]' :
-                                           'bg-white/[0.03] border-white/[0.06] text-chalk-ghost'
+                                           'bg-white/[0.04] border-white/[0.08] text-chalk-mute'
                   }`}>
                     <i className={`${status === 'done' ? 'ph-check' : status === 'active' ? 'ph-circle-notch animate-spin' : s.icon} text-[15px]`} />
                   </div>
-                  <p className={`text-[11px] font-medium tracking-tight ${status === 'pending' ? 'text-chalk-ghost' : 'text-chalk'}`}>
+                  <p className={`text-[11px] font-medium tracking-tight ${status === 'pending' ? 'text-chalk-mute' : 'text-chalk'}`}>
                     {s.label}
                   </p>
                 </div>

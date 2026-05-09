@@ -45,7 +45,7 @@ const FloatingNav: React.FC = () => {
                   active ? 'text-ink' : 'text-chalk-dim hover:text-chalk'
                 }`}
               >
-                <i className={`${item.icon} text-[16px] ${active ? '' : 'opacity-60'}`} />
+                <i className={`${item.icon} text-[16px] ${active ? 'text-ink' : 'text-chalk-dim'}`} />
                 {item.label}
               </span>
               {active && (
