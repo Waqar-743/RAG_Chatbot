@@ -1,0 +1,54 @@
+name: Deploy Backend to Vercel
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "api/**"
+      - "rag/**"
+      - "config/**"
+      - "main.py"
+      - "requirements.txt"
+      - "vercel.json"
+      - ".github/workflows/deploy-backend.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: "vercel-backend-${{ github.ref }}"
+  cancel-in-progress: true
+
+jobs:
+  deploy-backend:
+    runs-on: ubuntu-latest
+    steps:
+      # ── 1. Source ────────────────────────────────────────────────
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── 2. Vercel CLI ────────────────────────────────────────────
+      - name: Install Vercel CLI
+        run: npm install --global vercel@latest
+
+      - name: Pull Vercel project settings
+        run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_BACKEND_TOKEN }}
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_BACKEND_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_BACKEND_PROJECT_ID }}
+
+      - name: Deploy to Vercel (production)
+        id: deploy
+        run: |
+          DEPLOY_URL=$(vercel deploy --prod --token=${{ secrets.VERCEL_BACKEND_TOKEN }})
+          echo "url=$DEPLOY_URL" >> $GITHUB_OUTPUT
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_BACKEND_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_BACKEND_PROJECT_ID }}
+
+      - name: Print backend URL
+        run: |
+          echo "🚀 Backend API → ${{ steps.deploy.outputs.url }}"
+          echo "🩺 Health check → ${{ steps.deploy.outputs.url }}/api/v1/health"
+          echo "📖 API docs → ${{ steps.deploy.outputs.url }}/docs"

@@ -3,6 +3,7 @@ RAG Chatbot - Main Application Entry Point.
 FastAPI application with CORS support for frontend integration.
 """
 
+import os
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -77,12 +78,17 @@ app = FastAPI(
     redoc_url="/redoc"
 )
 
-# Configure CORS — allow GitHub Pages and localhost dev server
-_ALLOWED_ORIGINS = [
-    "https://waqar-743.github.io",  # GitHub Pages
-    "http://localhost:3000",         # local Vite dev server
+# Configure CORS — allow Vercel frontend, GitHub Pages, and local dev
+_BASE_ORIGINS = [
+    "https://waqar-743.github.io",          # GitHub Pages (legacy)
+    "http://localhost:3000",                  # local Vite dev server
     "http://localhost:5173",
 ]
+
+# Accept extra origins from env var (comma-separated) — add your Vercel
+# frontend URL here without redeploying: CORS_ORIGINS=https://rag-chatbot.vercel.app
+_extra = os.environ.get("CORS_ORIGINS", "")
+_ALLOWED_ORIGINS = _BASE_ORIGINS + [o.strip() for o in _extra.split(",") if o.strip()]
 
 app.add_middleware(
     CORSMiddleware,
