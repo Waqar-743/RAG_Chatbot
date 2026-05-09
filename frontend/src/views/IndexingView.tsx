@@ -188,9 +188,13 @@ const IndexingView: React.FC = () => {
             <motion.div
               animate={{ y: dragOver ? -6 : 0 }}
               transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
-              className="size-20 rounded-full bg-white/[0.04] border border-white/[0.06] flex items-center justify-center mb-6 group-hover:border-accent/40 transition-colors duration-700"
+              className={`size-20 rounded-full flex items-center justify-center mb-6 border transition-all duration-700 ${
+                dragOver
+                  ? 'bg-accent/25 border-accent/60 shadow-[0_0_32px_rgba(201,184,255,0.25)]'
+                  : 'bg-white/[0.08] border-white/[0.15] group-hover:bg-accent/15 group-hover:border-accent/40'
+              }`}
             >
-              <i className={`ph-cloud-arrow-up text-[34px] ${dragOver ? 'text-accent' : 'text-chalk-dim group-hover:text-accent'} transition-colors duration-700`} />
+              <i className={`ph-cloud-arrow-up text-[34px] ${dragOver ? 'text-accent' : 'text-chalk group-hover:text-accent'} transition-colors duration-700`} />
             </motion.div>
             <h3 className="text-[22px] font-medium tracking-tightest text-chalk">
               {dragOver ? 'Release to import' : 'Drop a document'}
@@ -306,11 +310,11 @@ const IndexingView: React.FC = () => {
               <span className="text-[11px] font-mono text-chalk-mute">{activityLogs.length}</span>
             </div>
             <div className="flex items-center gap-1">
-              <button onClick={fetchStats} title="Refresh stats" className="size-8 rounded-full hover:bg-white/[0.06] flex items-center justify-center text-chalk-mute hover:text-chalk transition-colors duration-500">
+              <button onClick={fetchStats} title="Refresh stats" className="size-8 rounded-full bg-white/[0.07] border border-white/[0.10] hover:bg-white/[0.12] flex items-center justify-center text-chalk-dim hover:text-chalk transition-colors duration-500">
                 <i className="ph-arrows-clockwise text-[14px]" />
               </button>
               {activityLogs.length > 0 && (
-                <button onClick={() => { if (confirm('Clear all activity?')) clearActivityLogs(); }} title="Clear" className="size-8 rounded-full hover:bg-rose-400/10 flex items-center justify-center text-chalk-mute hover:text-rose-300 transition-colors duration-500">
+                <button onClick={() => { if (confirm('Clear all activity?')) clearActivityLogs(); }} title="Clear" className="size-8 rounded-full bg-white/[0.07] border border-white/[0.10] hover:bg-rose-400/15 hover:border-rose-400/30 flex items-center justify-center text-chalk-dim hover:text-rose-300 transition-colors duration-500">
                   <i className="ph-trash text-[14px]" />
                 </button>
               )}
@@ -358,7 +362,7 @@ const StatTile: React.FC<{ className?: string; eyebrow: string; value: string; h
     <div className="bezel-core p-6 h-full flex flex-col justify-between min-h-[140px]">
       <div className="flex items-start justify-between">
         <span className="text-[10px] tracking-[0.25em] uppercase font-medium text-chalk-mute">{eyebrow}</span>
-        <i className={`${icon} text-[18px] text-accent/80`} />
+        <i className={`${icon} text-[18px] text-accent`} />
       </div>
       <div>
         <p className="text-[36px] font-medium tracking-editorial text-chalk leading-none">{value}</p>

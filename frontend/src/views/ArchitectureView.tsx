@@ -119,7 +119,7 @@ const ArchitectureView: React.FC = () => {
                    className="bezel-shell cursor-pointer" style={{ width: DIMS.engine.w }}>
                 <div className="bezel-core p-5 ring-1 ring-accent/30">
                   <div className="flex items-center gap-3 mb-4">
-                    <div className="size-11 rounded-xl bg-accent/[0.16] border border-accent/30 flex items-center justify-center text-accent shadow-[0_0_20px_rgba(201,184,255,0.25)]">
+                    <div className="size-11 rounded-xl bg-accent/30 border border-accent/55 flex items-center justify-center text-accent shadow-[0_0_24px_rgba(201,184,255,0.35)]">
                       <i className="ph-graph text-[22px]" />
                     </div>
                     <div>
@@ -147,7 +147,7 @@ const ArchitectureView: React.FC = () => {
                    className="bezel-shell cursor-pointer" style={{ width: DIMS.persistence.w }}>
                 <div className="bezel-core p-5 ring-1 ring-accent-mint/30">
                   <div className="flex items-center gap-3 mb-4">
-                    <div className="size-10 rounded-xl bg-accent-mint/[0.12] border border-accent-mint/30 flex items-center justify-center text-accent-mint">
+                    <div className="size-10 rounded-xl bg-accent-mint/25 border border-accent-mint/50 flex items-center justify-center text-accent-mint shadow-[0_0_16px_rgba(167,243,208,0.2)]">
                       <i className="ph-database text-[18px]" />
                     </div>
                     <h3 className="text-[14px] font-medium tracking-tight text-chalk">Persistence</h3>
@@ -226,11 +226,12 @@ const Connector: React.FC<{ start: { x: number; y: number }; end: { x: number; y
 const NodeCard: React.FC<{ icon: string; title: string; subtitle: string; desc: string; tone: 'core' | 'managed'; w: number; onClick?: () => void }> =
   ({ icon, title, subtitle, desc, tone, w, onClick }) => (
   <div onClick={onClick} className="bezel-shell cursor-pointer transition-transform duration-700 ease-spring hover:scale-[1.01]" style={{ width: w }}>
-    <div className={`bezel-core p-5 ${tone === 'managed' ? 'ring-1 ring-accent-mint/20' : ''}`}>
+    <div className={`bezel-core p-5 ${tone === 'managed' ? 'ring-1 ring-accent-mint/30' : ''}`}>
       <div className="flex items-center gap-3 mb-3">
         <div className={`size-10 rounded-xl flex items-center justify-center border ${
-          tone === 'core' ? 'bg-accent/[0.10] border-accent/25 text-accent'
-                          : 'bg-accent-mint/[0.10] border-accent-mint/25 text-accent-mint'
+          tone === 'core'
+            ? 'bg-accent/25 border-accent/50 text-accent shadow-[0_0_16px_rgba(201,184,255,0.2)]'
+            : 'bg-accent-mint/20 border-accent-mint/50 text-accent-mint shadow-[0_0_16px_rgba(167,243,208,0.15)]'
         }`}>
           <i className={`${icon} text-[18px]`} />
         </div>
@@ -245,14 +246,14 @@ const NodeCard: React.FC<{ icon: string; title: string; subtitle: string; desc: 
 );
 
 const Pip: React.FC<{ icon: string; label: string }> = ({ icon, label }) => (
-  <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/[0.03] border border-white/[0.05]">
+  <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/[0.08] border border-white/[0.12]">
     <i className={`${icon} text-[12px] text-accent`} />
-    <span className="text-[11px] text-chalk-dim tracking-tight">{label}</span>
+    <span className="text-[11px] text-chalk tracking-tight">{label}</span>
   </div>
 );
 
 const MiniTile: React.FC<{ label: string; value: string }> = ({ label, value }) => (
-  <div className="rounded-xl bg-white/[0.03] border border-white/[0.05] p-3 text-center">
+  <div className="rounded-xl bg-white/[0.08] border border-white/[0.14] p-3 text-center">
     <p className="text-[9px] tracking-[0.2em] uppercase text-chalk-mute">{label}</p>
     <p className="text-[12px] font-medium text-chalk mt-1">{value}</p>
   </div>
@@ -271,8 +272,9 @@ const SpecCard: React.FC<{ icon: string; eyebrow: string; title: string; tone: '
     <div className="bezel-core p-6">
       <div className="flex items-center gap-3 mb-6">
         <div className={`size-10 rounded-xl flex items-center justify-center border ${
-          tone === 'accent' ? 'bg-accent/[0.10] border-accent/25 text-accent'
-                            : 'bg-accent-mint/[0.10] border-accent-mint/25 text-accent-mint'
+          tone === 'accent'
+            ? 'bg-accent/25 border-accent/50 text-accent shadow-[0_0_16px_rgba(201,184,255,0.2)]'
+            : 'bg-accent-mint/20 border-accent-mint/50 text-accent-mint shadow-[0_0_16px_rgba(167,243,208,0.15)]'
         }`}>
           <i className={`${icon} text-[18px]`} />
         </div>

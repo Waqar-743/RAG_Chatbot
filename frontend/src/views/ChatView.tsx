@@ -186,7 +186,7 @@ const ChatView: React.FC = () => {
                   className="group bezel-shell hover:scale-[1.01] transition-transform duration-700 ease-spring text-left"
                 >
                   <div className="bezel-core px-5 py-4 flex items-center gap-3">
-                    <div className="size-9 rounded-full bg-white/[0.04] border border-white/[0.06] flex items-center justify-center text-accent group-hover:text-chalk transition-colors duration-500 ease-spring">
+                    <div className="size-9 rounded-full bg-accent/[0.15] border border-accent/30 flex items-center justify-center text-accent group-hover:text-chalk group-hover:bg-white/[0.10] group-hover:border-white/20 transition-all duration-500 ease-spring">
                       <i className={`${s.icon} text-[16px]`} />
                     </div>
                     <span className="text-[13px] text-chalk-dim group-hover:text-chalk transition-colors duration-500">
@@ -277,8 +277,8 @@ const MessageBubble: React.FC<{ msg: Message; onCopy: () => void }> = ({ msg, on
       className={`flex gap-4 ${isUser ? 'flex-row-reverse' : ''}`}
     >
       <div className={`size-8 shrink-0 rounded-full flex items-center justify-center border ${
-        isUser ? 'bg-white/[0.04] border-white/[0.08] text-chalk-dim'
-               : 'bg-accent/[0.12] border-accent/30 text-accent'
+        isUser ? 'bg-white/[0.10] border-white/[0.20] text-chalk-dim'
+               : 'bg-accent/20 border-accent/40 text-accent'
       }`}>
         <i className={`${isUser ? 'ph-user' : 'ph-sparkle'} text-[14px]`} />
       </div>
@@ -375,7 +375,9 @@ const ComposerIcon: React.FC<{ icon: string; onClick?: () => void; active?: bool
     onClick={onClick}
     title={title}
     className={`size-9 rounded-full flex items-center justify-center transition-all duration-500 ease-spring ${
-      active ? 'bg-rose-400/15 text-rose-300' : 'text-chalk-mute hover:text-chalk hover:bg-white/[0.06]'
+      active
+        ? 'bg-rose-400/20 border border-rose-400/30 text-rose-300'
+        : 'bg-white/[0.07] border border-white/[0.10] text-chalk-dim hover:text-chalk hover:bg-white/[0.12] hover:border-white/20'
     }`}
   >
     <i className={`${icon} text-[16px] ${spin ? 'animate-spin' : ''}`} />
