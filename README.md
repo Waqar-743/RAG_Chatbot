@@ -53,7 +53,7 @@ gh repo create ragnarok --public --source=. --remote=origin --push
 cd frontend
 npx vercel --prod
 # In the Vercel dashboard, set:
-#   VITE_API_URL = https://ragnarok-api.onrender.com   (your Render URL)
+#   VITE_API_URL = https://rag-chatbot-api-ivory.vercel.app   (public Vercel backend)
 # then redeploy.
 ```
 
@@ -124,7 +124,7 @@ EMBEDDING_MODEL=text-embedding-3-small
 Frontend (Vercel dashboard or `frontend/.env.local`):
 
 ```env
-VITE_API_URL=https://ragnarok-api.onrender.com
+VITE_API_URL=https://rag-chatbot-api-ivory.vercel.app
 ```
 
 ---

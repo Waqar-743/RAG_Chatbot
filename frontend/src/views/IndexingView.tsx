@@ -2,15 +2,16 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useToast, useIndexing } from '../context/GlobalContext';
 import api, { CollectionStats, DocumentInput } from '../services/api';
+import { AppIcon, CircularIconButton, type IconName } from '../components/Icon';
 
 type PipelineStage = 'idle' | 'received' | 'parsing' | 'chunking' | 'embedding' | 'upserting' | 'complete' | 'error';
 
-const STAGES: { key: Exclude<PipelineStage, 'idle' | 'complete' | 'error'>; label: string; icon: string }[] = [
-  { key: 'received',  label: 'Receive',  icon: 'ph-tray-arrow-down' },
-  { key: 'parsing',   label: 'Parse',    icon: 'ph-code' },
-  { key: 'chunking',  label: 'Chunk',    icon: 'ph-scissors' },
-  { key: 'embedding', label: 'Embed',    icon: 'ph-sparkle' },
-  { key: 'upserting', label: 'Persist',  icon: 'ph-database' },
+const STAGES: { key: Exclude<PipelineStage, 'idle' | 'complete' | 'error'>; label: string; icon: IconName }[] = [
+  { key: 'received',  label: 'Receive',  icon: 'tray-arrow-down' },
+  { key: 'parsing',   label: 'Parse',    icon: 'code' },
+  { key: 'chunking',  label: 'Chunk',    icon: 'scissors' },
+  { key: 'embedding', label: 'Embed',    icon: 'sparkle' },
+  { key: 'upserting', label: 'Persist',  icon: 'database' },
 ];
 
 const IndexingView: React.FC = () => {
@@ -69,18 +70,18 @@ const IndexingView: React.FC = () => {
       const dur = ((Date.now() - start) / 1000).toFixed(1);
       if (res.successful > 0) {
         showToast(`Indexed — ${res.total_chunks} chunks`, 'success');
-        addActivityLog({ name: sourceName, time: nowTime(), duration: `${dur}s`, status: 'SUCCESS', icon: 'ph-file-text', chunks: res.total_chunks });
+        addActivityLog({ name: sourceName, time: nowTime(), duration: `${dur}s`, status: 'SUCCESS', icon: 'file-text', chunks: res.total_chunks });
         setTextContent(''); setSourceName(''); setWikiUrl('');
         await fetchStats();
       } else {
         setStage('error');
         showToast('Indexing failed: ' + (res.details[0]?.message || 'Unknown'), 'error');
-        addActivityLog({ name: sourceName, time: nowTime(), duration: '—', status: 'FAILED', icon: 'ph-warning' });
+        addActivityLog({ name: sourceName, time: nowTime(), duration: '—', status: 'FAILED', icon: 'warning' });
       }
     } catch (err) {
       setStage('error');
       showToast(err instanceof Error ? err.message : 'Indexing failed', 'error');
-      addActivityLog({ name: sourceName, time: nowTime(), duration: '—', status: 'FAILED', icon: 'ph-warning' });
+      addActivityLog({ name: sourceName, time: nowTime(), duration: '—', status: 'FAILED', icon: 'warning' });
     } finally {
       setIsIndexing(false);
       setTimeout(() => { setStage('idle'); setPct(0); }, 2000);
@@ -99,7 +100,7 @@ const IndexingView: React.FC = () => {
       const dur = ((Date.now() - start) / 1000).toFixed(1);
       if (res.successful > 0) {
         showToast('URL indexed', 'success');
-        addActivityLog({ name: wikiUrl.replace(/^https?:\/\//, '').slice(0, 32) + '…', time: nowTime(), duration: `${dur}s`, status: 'SUCCESS', icon: 'ph-globe', chunks: res.total_chunks });
+        addActivityLog({ name: wikiUrl.replace(/^https?:\/\//, '').slice(0, 32) + '…', time: nowTime(), duration: `${dur}s`, status: 'SUCCESS', icon: 'globe', chunks: res.total_chunks });
         setWikiUrl(''); await fetchStats();
       } else {
         setStage('error'); showToast('Failed to index URL', 'error');
@@ -160,13 +161,13 @@ const IndexingView: React.FC = () => {
 
       {/* Stats bento — 3 asymmetric tiles */}
       <div className="grid grid-cols-1 md:grid-cols-6 gap-3 mb-6">
-        <StatTile className="md:col-span-3" eyebrow="Vectors" icon="ph-database"
+        <StatTile className="md:col-span-3" eyebrow="Vectors" icon="database"
                   value={stats?.vector_count?.toLocaleString() || '0'}
                   hint={stats?.status === 'healthy' ? 'Live · synced' : 'Connecting…'} />
-        <StatTile className="md:col-span-2" eyebrow="Documents" icon="ph-files"
+        <StatTile className="md:col-span-2" eyebrow="Documents" icon="files"
                   value={stats?.document_count?.toString() || '0'}
                   hint="In collection" />
-        <StatTile className="md:col-span-1" eyebrow="Session" icon="ph-check-circle"
+        <StatTile className="md:col-span-1" eyebrow="Session" icon="check-circle"
                   value={activityLogs.filter(l => l.status === 'SUCCESS').length.toString()}
                   hint="Indexed" />
       </div>
@@ -194,7 +195,11 @@ const IndexingView: React.FC = () => {
                   : 'bg-white/[0.08] border-white/[0.15] group-hover:bg-accent/15 group-hover:border-accent/40'
               }`}
             >
-              <i className={`ph-cloud-arrow-up text-[34px] ${dragOver ? 'text-accent' : 'text-chalk group-hover:text-accent'} transition-colors duration-700`} />
+              <AppIcon
+                name="cloud-arrow-up"
+                size={34}
+                className={`${dragOver ? 'text-accent' : 'text-chalk group-hover:text-accent'} transition-colors duration-700`}
+              />
             </motion.div>
             <h3 className="text-[22px] font-medium tracking-tightest text-chalk">
               {dragOver ? 'Release to import' : 'Drop a document'}
@@ -248,10 +253,12 @@ const IndexingView: React.FC = () => {
               <button
                 onClick={indexDocument}
                 disabled={isIndexing || !textContent.trim() || !sourceName.trim()}
-                className={`btn-magnetic w-full justify-center ${(isIndexing || !textContent.trim() || !sourceName.trim()) ? 'opacity-40 cursor-not-allowed' : ''}`}
+                className={`btn-magnetic w-full justify-center ${(isIndexing || !textContent.trim() || !sourceName.trim()) ? 'cursor-not-allowed' : ''}`}
               >
                 {isIndexing ? 'Indexing…' : 'Index document'}
-                <span className="icon-island"><i className={`${isIndexing ? 'ph-circle-notch animate-spin' : 'ph-arrow-up-right'} text-[14px]`} /></span>
+                <span className="icon-island">
+                  <AppIcon name={isIndexing ? 'circle-notch' : 'arrow-up-right'} size={14} spin={isIndexing} />
+                </span>
               </button>
             </div>
           </div>
@@ -289,7 +296,11 @@ const IndexingView: React.FC = () => {
                     status === 'active' ? 'bg-accent/[0.16] border-accent/50 text-accent shadow-[0_0_24px_rgba(201,184,255,0.35)]' :
                                            'bg-white/[0.04] border-white/[0.08] text-chalk-mute'
                   }`}>
-                    <i className={`${status === 'done' ? 'ph-check' : status === 'active' ? 'ph-circle-notch animate-spin' : s.icon} text-[15px]`} />
+                    <AppIcon
+                      name={status === 'done' ? 'check' : status === 'active' ? 'circle-notch' : s.icon}
+                      size={15}
+                      spin={status === 'active'}
+                    />
                   </div>
                   <p className={`text-[11px] font-medium tracking-tight ${status === 'pending' ? 'text-chalk-mute' : 'text-chalk'}`}>
                     {s.label}
@@ -310,20 +321,22 @@ const IndexingView: React.FC = () => {
               <span className="text-[11px] font-mono text-chalk-mute">{activityLogs.length}</span>
             </div>
             <div className="flex items-center gap-1">
-              <button onClick={fetchStats} title="Refresh stats" className="size-8 rounded-full bg-white/[0.07] border border-white/[0.10] hover:bg-white/[0.12] flex items-center justify-center text-chalk-dim hover:text-chalk transition-colors duration-500">
-                <i className="ph-arrows-clockwise text-[14px]" />
-              </button>
+              <CircularIconButton icon="arrows-clockwise" onClick={fetchStats} label="Refresh stats" size="sm" />
               {activityLogs.length > 0 && (
-                <button onClick={() => { if (confirm('Clear all activity?')) clearActivityLogs(); }} title="Clear" className="size-8 rounded-full bg-white/[0.07] border border-white/[0.10] hover:bg-rose-400/15 hover:border-rose-400/30 flex items-center justify-center text-chalk-dim hover:text-rose-300 transition-colors duration-500">
-                  <i className="ph-trash text-[14px]" />
-                </button>
+                <CircularIconButton
+                  icon="trash"
+                  onClick={() => { if (confirm('Clear all activity?')) clearActivityLogs(); }}
+                  label="Clear activity"
+                  size="sm"
+                  tone="danger"
+                />
               )}
             </div>
           </div>
 
           {activityLogs.length === 0 ? (
             <div className="px-6 py-16 text-center">
-              <i className="ph-clock-counter-clockwise text-[28px] text-chalk-ghost" />
+              <AppIcon name="clock-counter-clockwise" size={28} className="text-chalk-ghost" />
               <p className="mt-4 text-[12px] text-chalk-mute tracking-tight">No activity yet — index a document to populate this log.</p>
             </div>
           ) : (
@@ -337,7 +350,11 @@ const IndexingView: React.FC = () => {
                     transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
                     className="px-6 py-3 flex items-center gap-4 hover:bg-white/[0.02] transition-colors duration-500"
                   >
-                    <i className={`${log.icon || 'ph-file-text'} text-[15px] ${log.status === 'SUCCESS' ? 'text-accent-mint' : 'text-rose-300'}`} />
+                    <AppIcon
+                      name={log.icon || 'file-text'}
+                      size={15}
+                      className={log.status === 'SUCCESS' ? 'text-accent-mint' : 'text-rose-300'}
+                    />
                     <span className="flex-1 text-[13px] font-medium text-chalk truncate">{log.name}</span>
                     <span className="hidden md:inline text-[11px] font-mono text-chalk-mute">{log.time}</span>
                     <span className="hidden md:inline text-[11px] font-mono text-chalk-mute w-12 text-right">{log.duration}</span>
@@ -356,13 +373,13 @@ const IndexingView: React.FC = () => {
   );
 };
 
-const StatTile: React.FC<{ className?: string; eyebrow: string; value: string; hint: string; icon: string }> =
+const StatTile: React.FC<{ className?: string; eyebrow: string; value: string; hint: string; icon: IconName }> =
   ({ className = '', eyebrow, value, hint, icon }) => (
   <div className={`bezel-shell ${className}`}>
     <div className="bezel-core p-6 h-full flex flex-col justify-between min-h-[140px]">
       <div className="flex items-start justify-between">
         <span className="text-[10px] tracking-[0.25em] uppercase font-medium text-chalk-mute">{eyebrow}</span>
-        <i className={`${icon} text-[18px] text-accent`} />
+        <AppIcon name={icon} size={18} className="text-accent" />
       </div>
       <div>
         <p className="text-[36px] font-medium tracking-editorial text-chalk leading-none">{value}</p>

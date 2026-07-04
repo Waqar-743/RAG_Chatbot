@@ -26,6 +26,7 @@ from rag.retrieval import RAGRetriever
 from rag.utils import extract_text_from_pdf, extract_text_from_docx, extract_text_from_url
 from config.logging_config import get_logger
 from config.settings import settings
+from config.constants import VECTOR_DIMENSION
 
 logger = get_logger(__name__)
 
@@ -85,9 +86,12 @@ async def get_stats():
         return CollectionStats(**stats)
     except Exception as e:
         logger.error(f"Error getting stats: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e)
+        return CollectionStats(
+            collection_name=settings.qdrant_collection,
+            vector_count=0,
+            document_count=0,
+            vector_dimension=VECTOR_DIMENSION,
+            status="error"
         )
 
 
@@ -142,9 +146,16 @@ async def query_documents(request: QueryRequest):
         
     except Exception as e:
         logger.error(f"Query error: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e)
+        return QueryResponse(
+            answer=(
+                "I hit an error while connecting to the retrieval backend. "
+                "Please check the vector database configuration and try again."
+            ),
+            sources=[],
+            query=request.query,
+            documents_retrieved=0,
+            processing_time_ms=0,
+            status="error",
         )
 
 
@@ -174,10 +185,7 @@ async def search_documents(request: SearchRequest):
         
     except Exception as e:
         logger.error(f"Search error: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e)
-        )
+        return SearchResponse(results=[], query=request.query, total_results=0)
 
 
 # ===========================================
@@ -227,9 +235,21 @@ async def index_documents(request: IndexRequest):
         
     except Exception as e:
         logger.error(f"Indexing error: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e)
+        return IndexResponse(
+            total=len(request.documents),
+            successful=0,
+            failed=len(request.documents),
+            total_chunks=0,
+            details=[
+                {
+                    "status": "error",
+                    "source": doc.source,
+                    "document_id": None,
+                    "chunks_indexed": 0,
+                    "message": str(e),
+                }
+                for doc in request.documents
+            ],
         )
 
 

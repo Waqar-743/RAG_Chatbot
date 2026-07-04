@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, useRef } from 'react';
+import { AppIcon, type IconName } from '../components/Icon';
 
 // === Toast Context ===
 export interface Toast {
@@ -49,10 +50,13 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 : 'bg-accent/[0.08] border-accent/30 text-accent'
             }`}
           >
-            <i className={`text-[16px] ${
-              toast.type === 'success' ? 'ph-check-circle' :
-              toast.type === 'error' ? 'ph-warning-circle' : 'ph-info'
-            }`} />
+            <AppIcon
+              name={
+                toast.type === 'success' ? 'check-circle' :
+                toast.type === 'error' ? 'warning-circle' : 'info'
+              }
+              size={16}
+            />
             <span className="text-[12px] font-medium tracking-tight text-chalk">{toast.message}</span>
           </div>
         ))}
@@ -68,7 +72,7 @@ export interface ActivityLog {
   time: string;
   duration: string;
   status: 'SUCCESS' | 'FAILED';
-  icon: string;
+  icon: IconName;
   chunks?: number;
 }
 

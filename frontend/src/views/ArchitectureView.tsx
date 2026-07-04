@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useToast } from '../context/GlobalContext';
+import { AppIcon, type IconName } from '../components/Icon';
 
 type NodeId = 'frontend' | 'backend' | 'engine' | 'services' | 'persistence';
 const DIMS: Record<NodeId, { w: number; h: number }> = {
@@ -61,7 +62,7 @@ const ArchitectureView: React.FC = () => {
         <div className="flex items-center gap-2">
           <button onClick={copyLink} className="btn-ghost">
             Share blueprint
-            <span className="icon-island"><i className="ph-link-simple text-[13px]" /></span>
+            <span className="icon-island"><AppIcon name="link-simple" size={13} /></span>
           </button>
         </div>
       </motion.div>
@@ -101,14 +102,14 @@ const ArchitectureView: React.FC = () => {
             </div>
 
             <Draggable id="frontend" pos={nodes.frontend} onDrag={i => drag('frontend', i)} c={constraintsRef}>
-              <NodeCard icon="ph-browser" title="Frontend" subtitle="React · Vite · TS"
+              <NodeCard icon="browser" title="Frontend" subtitle="React · Vite · TS"
                         desc="Chat surface, indexing console, draggable blueprint."
                         tone="core" w={DIMS.frontend.w}
                         onClick={() => showToast('React 18 + TypeScript + Tailwind', 'info')} />
             </Draggable>
 
             <Draggable id="backend" pos={nodes.backend} onDrag={i => drag('backend', i)} c={constraintsRef}>
-              <NodeCard icon="ph-cloud" title="Backend" subtitle="FastAPI · Uvicorn"
+              <NodeCard icon="cloud" title="Backend" subtitle="FastAPI · Uvicorn"
                         desc="Routing, validation, sessions, file extraction."
                         tone="core" w={DIMS.backend.w}
                         onClick={() => showToast('FastAPI + Uvicorn', 'success')} />
@@ -120,7 +121,7 @@ const ArchitectureView: React.FC = () => {
                 <div className="bezel-core p-5 ring-1 ring-accent/30">
                   <div className="flex items-center gap-3 mb-4">
                     <div className="size-11 rounded-xl bg-accent/30 border border-accent/55 flex items-center justify-center text-accent shadow-[0_0_24px_rgba(201,184,255,0.35)]">
-                      <i className="ph-graph text-[22px]" />
+                      <AppIcon name="graph" size={22} />
                     </div>
                     <div>
                       <h3 className="text-[14px] font-medium tracking-tight text-chalk">RAG Engine</h3>
@@ -128,15 +129,15 @@ const ArchitectureView: React.FC = () => {
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <Pip icon="ph-magnifying-glass" label="Hybrid retrieval" />
-                    <Pip icon="ph-list-magnifying-glass" label="MMR rerank · HyDE" />
+                    <Pip icon="magnifying-glass" label="Hybrid retrieval" />
+                    <Pip icon="list-magnifying-glass" label="MMR rerank · HyDE" />
                   </div>
                 </div>
               </div>
             </Draggable>
 
             <Draggable id="services" pos={nodes.services} onDrag={i => drag('services', i)} c={constraintsRef}>
-              <NodeCard icon="ph-lightning" title="Models" subtitle="OpenRouter"
+              <NodeCard icon="lightning" title="Models" subtitle="OpenRouter"
                         desc="DeepSeek (reasoning) · text-embedding-3-small (1536d)."
                         tone="managed" w={DIMS.services.w}
                         onClick={() => showToast('OpenRouter · DeepSeek + OpenAI embeddings', 'success')} />
@@ -148,7 +149,7 @@ const ArchitectureView: React.FC = () => {
                 <div className="bezel-core p-5 ring-1 ring-accent-mint/30">
                   <div className="flex items-center gap-3 mb-4">
                     <div className="size-10 rounded-xl bg-accent-mint/25 border border-accent-mint/50 flex items-center justify-center text-accent-mint shadow-[0_0_16px_rgba(167,243,208,0.2)]">
-                      <i className="ph-database text-[18px]" />
+                      <AppIcon name="database" size={18} />
                     </div>
                     <h3 className="text-[14px] font-medium tracking-tight text-chalk">Persistence</h3>
                   </div>
@@ -170,17 +171,17 @@ const ArchitectureView: React.FC = () => {
           Stack, end to end.
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <SpecCard icon="ph-browser" eyebrow="Surface" title="UI & access" tone="accent"
+          <SpecCard icon="browser" eyebrow="Surface" title="UI & access" tone="accent"
                     points={[
                       { l: 'React 18 + TypeScript', d: 'Reactive UI with Framer Motion micro-interactions.' },
                       { l: 'FastAPI', d: 'Auto-OpenAPI, async file extraction, streaming.' },
                     ]} />
-          <SpecCard icon="ph-sparkle" eyebrow="Cognition" title="Intelligence" tone="accent"
+          <SpecCard icon="sparkle" eyebrow="Cognition" title="Intelligence" tone="accent"
                     points={[
                       { l: 'DeepSeek via OpenRouter', d: 'High-quality reasoning at low latency.' },
                       { l: 'text-embedding-3-small', d: '1536-dim semantic vectors.' },
                     ]} />
-          <SpecCard icon="ph-database" eyebrow="Memory" title="Storage" tone="mint"
+          <SpecCard icon="database" eyebrow="Memory" title="Storage" tone="mint"
                     points={[
                       { l: 'Qdrant Cloud', d: 'HNSW vector search · cosine.' },
                       { l: 'MongoDB Atlas', d: 'Document metadata, sessions, chat history.' },
@@ -223,7 +224,7 @@ const Connector: React.FC<{ start: { x: number; y: number }; end: { x: number; y
   );
 };
 
-const NodeCard: React.FC<{ icon: string; title: string; subtitle: string; desc: string; tone: 'core' | 'managed'; w: number; onClick?: () => void }> =
+const NodeCard: React.FC<{ icon: IconName; title: string; subtitle: string; desc: string; tone: 'core' | 'managed'; w: number; onClick?: () => void }> =
   ({ icon, title, subtitle, desc, tone, w, onClick }) => (
   <div onClick={onClick} className="bezel-shell cursor-pointer transition-transform duration-700 ease-spring hover:scale-[1.01]" style={{ width: w }}>
     <div className={`bezel-core p-5 ${tone === 'managed' ? 'ring-1 ring-accent-mint/30' : ''}`}>
@@ -233,7 +234,7 @@ const NodeCard: React.FC<{ icon: string; title: string; subtitle: string; desc: 
             ? 'bg-accent/25 border-accent/50 text-accent shadow-[0_0_16px_rgba(201,184,255,0.2)]'
             : 'bg-accent-mint/20 border-accent-mint/50 text-accent-mint shadow-[0_0_16px_rgba(167,243,208,0.15)]'
         }`}>
-          <i className={`${icon} text-[18px]`} />
+          <AppIcon name={icon} size={18} />
         </div>
         <div>
           <h3 className="text-[13px] font-medium tracking-tight text-chalk">{title}</h3>
@@ -245,9 +246,9 @@ const NodeCard: React.FC<{ icon: string; title: string; subtitle: string; desc: 
   </div>
 );
 
-const Pip: React.FC<{ icon: string; label: string }> = ({ icon, label }) => (
+const Pip: React.FC<{ icon: IconName; label: string }> = ({ icon, label }) => (
   <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/[0.08] border border-white/[0.12]">
-    <i className={`${icon} text-[12px] text-accent`} />
+    <AppIcon name={icon} size={12} className="text-accent" />
     <span className="text-[11px] text-chalk tracking-tight">{label}</span>
   </div>
 );
@@ -266,7 +267,7 @@ const Legend: React.FC<{ color: string; label: string }> = ({ color, label }) =>
   </div>
 );
 
-const SpecCard: React.FC<{ icon: string; eyebrow: string; title: string; tone: 'accent' | 'mint'; points: { l: string; d: string }[] }> =
+const SpecCard: React.FC<{ icon: IconName; eyebrow: string; title: string; tone: 'accent' | 'mint'; points: { l: string; d: string }[] }> =
   ({ icon, eyebrow, title, tone, points }) => (
   <div className="bezel-shell">
     <div className="bezel-core p-6">
@@ -276,7 +277,7 @@ const SpecCard: React.FC<{ icon: string; eyebrow: string; title: string; tone: '
             ? 'bg-accent/25 border-accent/50 text-accent shadow-[0_0_16px_rgba(201,184,255,0.2)]'
             : 'bg-accent-mint/20 border-accent-mint/50 text-accent-mint shadow-[0_0_16px_rgba(167,243,208,0.15)]'
         }`}>
-          <i className={`${icon} text-[18px]`} />
+          <AppIcon name={icon} size={18} />
         </div>
         <div>
           <p className="text-[10px] tracking-[0.25em] uppercase text-chalk-mute font-medium">{eyebrow}</p>

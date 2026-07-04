@@ -60,30 +60,95 @@ def generate_uuid() -> str:
     return str(uuid.uuid4())
 
 
+def _ordered_breaks(separator: str) -> List[str]:
+    """Return preferred chunk boundaries, preserving caller preference first."""
+    defaults = ["\n\n", "\n", ". ", "? ", "! ", "; ", ": ", ", ", " "]
+    breaks = [separator] if separator else []
+    for item in defaults:
+        if item and item not in breaks:
+            breaks.append(item)
+    return breaks
+
+
+def _trim_bounds(text: str, start: int, end: int) -> tuple[int, int]:
+    while start < end and text[start].isspace():
+        start += 1
+    while end > start and text[end - 1].isspace():
+        end -= 1
+    return start, end
+
+
+def _choose_chunk_end(
+    text: str,
+    start: int,
+    max_end: int,
+    min_end: int,
+    breaks: List[str],
+) -> int:
+    if max_end >= len(text):
+        return len(text)
+
+    window = text[start:max_end]
+    for boundary in breaks:
+        idx = window.rfind(boundary)
+        if idx == -1:
+            continue
+        end = start + idx + len(boundary)
+        if end >= min_end:
+            return end
+
+    return max_end
+
+
+def _choose_next_start(text: str, previous_start: int, previous_end: int, overlap: int) -> int:
+    if overlap <= 0:
+        return previous_end
+
+    candidate = max(previous_start + 1, previous_end - overlap)
+
+    # Avoid beginning the next chunk halfway through a word when a nearby
+    # boundary exists inside the intended overlap window.
+    while (
+        candidate < previous_end
+        and candidate > 0
+        and not text[candidate].isspace()
+        and not text[candidate - 1].isspace()
+    ):
+        candidate += 1
+
+    while candidate < previous_end and text[candidate].isspace():
+        candidate += 1
+
+    return min(candidate, previous_end)
+
+
 def chunk_text(
-    text: str, 
-    chunk_size: int = 512, 
+    text: str,
+    chunk_size: int = 512,
     overlap: int = 50,
     separator: str = "\n"
 ) -> List[Dict[str, Any]]:
     """
-    Split text into overlapping chunks with metadata.
-    
-    Args:
-        text: Text to split
-        chunk_size: Maximum characters per chunk
-        overlap: Number of overlapping characters between chunks
-        separator: Preferred split point
-        
-    Returns:
-        List of chunk dictionaries with text and metadata
+    Split text into overlapping, retrieval-friendly chunks with metadata.
+
+    The splitter prefers paragraph and sentence boundaries, clamps unsafe
+    overlap values, and guarantees forward progress even on long unbroken text.
+    Positions are offsets into the cleaned text returned by clean_text().
     """
     if not text or not text.strip():
         return []
-    
-    # Clean the text
+
     text = clean_text(text)
-    
+    if not text:
+        return []
+
+    chunk_size = max(1, int(chunk_size))
+    overlap = max(0, int(overlap))
+    if overlap >= chunk_size:
+        overlap = max(0, chunk_size // 5)
+    else:
+        overlap = min(overlap, chunk_size // 2)
+
     if len(text) <= chunk_size:
         return [{
             "text": text,
@@ -91,40 +156,36 @@ def chunk_text(
             "start_char": 0,
             "end_char": len(text)
         }]
-    
+
     chunks = []
     start = 0
     chunk_index = 0
-    
+    breaks = _ordered_breaks(separator)
+    min_chunk_length = max(1, chunk_size // 2)
+
     while start < len(text):
-        # Calculate end position
-        end = start + chunk_size
-        
-        # If not at the end, try to break at a natural point
-        if end < len(text):
-            # Look for sentence endings
-            for sep in [". ", ".\n", "\n\n", "\n", " "]:
-                last_sep = text[start:end].rfind(sep)
-                if last_sep > chunk_size // 2:  # Only use if not too early
-                    end = start + last_sep + len(sep)
-                    break
-        else:
-            end = len(text)
-        
-        chunk_text_content = text[start:end].strip()
-        
-        if chunk_text_content:
+        max_end = min(start + chunk_size, len(text))
+        min_end = min(len(text), start + min_chunk_length)
+        end = _choose_chunk_end(text, start, max_end, min_end, breaks)
+        chunk_start, chunk_end = _trim_bounds(text, start, end)
+
+        if chunk_start < chunk_end:
             chunks.append({
-                "text": chunk_text_content,
+                "text": text[chunk_start:chunk_end],
                 "chunk_index": chunk_index,
-                "start_char": start,
-                "end_char": end
+                "start_char": chunk_start,
+                "end_char": chunk_end
             })
             chunk_index += 1
-        
-        # Move start position with overlap
-        start = end - overlap if end < len(text) else end
-    
+
+        if end >= len(text):
+            break
+
+        next_start = _choose_next_start(text, start, end, overlap)
+        if next_start <= start:
+            next_start = min(len(text), start + max(1, chunk_size - overlap))
+        start = next_start
+
     return chunks
 
 
@@ -141,15 +202,12 @@ def clean_text(text: str) -> str:
     if not text:
         return ""
     
-    # Remove excessive whitespace
-    text = re.sub(r'\s+', ' ', text)
-    
-    # Remove special characters but keep punctuation
-    text = re.sub(r'[^\w\s.,!?;:\'"()\-\n]', '', text)
-    
-    # Remove multiple newlines
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    text = re.sub(r'[^\S\n]+', ' ', text)
+    text = re.sub(r' *\n *', '\n', text)
     text = re.sub(r'\n{3,}', '\n\n', text)
-    
+    text = re.sub(r'[^\w\s.,!?;:\'"()\-\n]', '', text)
+
     return text.strip()
 
 

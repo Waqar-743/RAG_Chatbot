@@ -6,7 +6,7 @@
 import axios, { AxiosInstance, AxiosError } from 'axios';
 
 // API Base URL — uses Vite proxy in dev; in prod, set VITE_API_URL to your backend root
-// (e.g. https://ragnarok-api.onrender.com). The "/api/v1" suffix is appended automatically.
+// (e.g. https://rag-chatbot-api-ivory.vercel.app). The "/api/v1" suffix is appended automatically.
 const RAW_BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '');
 const API_BASE_URL = RAW_BASE ? `${RAW_BASE}/api/v1` : '/api/v1';
 

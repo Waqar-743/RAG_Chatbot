@@ -3,6 +3,7 @@ Shared Qdrant client provider.
 Ensures a single client instance is reused across indexer/retriever.
 """
 
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -23,24 +24,41 @@ def get_qdrant_client() -> QdrantClient:
     if _qdrant_client is not None:
         return _qdrant_client
 
-    try:
-        client = QdrantClient(
-            url=settings.qdrant_url,
-            api_key=settings.qdrant_api_key,
-            timeout=30
-        )
-        client.get_collections()
-        logger.info("Connected to Qdrant Cloud successfully")
-        _qdrant_client = client
-        return _qdrant_client
-    except Exception as e:
-        local_path = Path("data") / "qdrant"
-        local_path.mkdir(parents=True, exist_ok=True)
+    has_cloud_config = bool(settings.qdrant_url and settings.qdrant_api_key)
 
-        logger.warning(
-            f"Failed to connect to Qdrant Cloud ({e}). "
-            f"Falling back to local Qdrant at: {local_path.as_posix()}"
+    if has_cloud_config:
+        try:
+            client = QdrantClient(
+                url=settings.qdrant_url,
+                api_key=settings.qdrant_api_key,
+                timeout=30
+            )
+            client.get_collections()
+            logger.info("Connected to Qdrant Cloud successfully")
+            _qdrant_client = client
+            return _qdrant_client
+        except Exception as e:
+            message = (
+                "Failed to connect to configured Qdrant Cloud. "
+                "Check QDRANT_URL, QDRANT_API_KEY, and that the cluster is running."
+            )
+            logger.error("%s Error: %s", message, e)
+            raise RuntimeError(message) from e
+
+    if os.environ.get("VERCEL"):
+        raise RuntimeError(
+            "QDRANT_URL and QDRANT_API_KEY are required on Vercel; "
+            "local Qdrant fallback is not available in serverless runtime."
         )
 
-        _qdrant_client = QdrantClient(path=str(local_path))
-        return _qdrant_client
+    local_path = Path("data") / "qdrant"
+    local_path.mkdir(parents=True, exist_ok=True)
+
+    logger.warning(
+        "Qdrant Cloud credentials are not configured. "
+        "Falling back to local Qdrant at: %s",
+        local_path.as_posix(),
+    )
+
+    _qdrant_client = QdrantClient(path=str(local_path))
+    return _qdrant_client

@@ -4,13 +4,24 @@ Loads configuration from environment variables and .env file.
 """
 
 from pydantic_settings import BaseSettings
-from pydantic import Field
+from pydantic import Field, field_validator
 from typing import Optional
 from functools import lru_cache
 
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
+
+    @field_validator("*", mode="before")
+    @classmethod
+    def strip_env_whitespace(cls, value):
+        """Normalize env vars copied from dashboards or files with CRLF endings."""
+        if isinstance(value, str):
+            cleaned = value.strip()
+            while cleaned.endswith("\\n") or cleaned.endswith("\\r"):
+                cleaned = cleaned[:-2].strip()
+            return cleaned
+        return value
     
     # ===========================================
     # OpenRouter API Configuration

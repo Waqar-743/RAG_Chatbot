@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useToast, useIndexing } from '../context/GlobalContext';
 import api, { Source, DocumentInput } from '../services/api';
+import { AppIcon, CircularIconButton, type IconName } from '../components/Icon';
 
 interface SpeechRecognitionEvent extends Event { results: SpeechRecognitionResultList }
 interface SpeechRecognitionErrorEvent extends Event { error: string }
@@ -26,11 +27,11 @@ interface Message {
 }
 
 const SUGGESTIONS = [
-  { icon: 'ph-lightning', label: 'Summarize my latest indexed document' },
-  { icon: 'ph-magnifying-glass', label: 'Find references to "embedding model"' },
-  { icon: 'ph-graph', label: 'How does the RAG pipeline work?' },
-  { icon: 'ph-file-arrow-up', label: 'Drag a file here to index instantly' },
-];
+  { icon: 'lightning', label: 'Summarize my latest indexed document' },
+  { icon: 'magnifying-glass', label: 'Find references to "embedding model"' },
+  { icon: 'graph', label: 'How does the RAG pipeline work?' },
+  { icon: 'file-arrow-up', label: 'Drag a file here to index instantly' },
+] satisfies { icon: IconName; label: string }[];
 
 const ChatView: React.FC = () => {
   const { showToast } = useToast();
@@ -101,7 +102,7 @@ const ChatView: React.FC = () => {
       const dur = ((Date.now() - start) / 1000).toFixed(1) + 's';
       if (res.successful > 0) {
         showToast(`Indexed "${file.name}" — ${res.total_chunks} chunks`, 'success');
-        addActivityLog({ name: file.name, time: new Date().toLocaleTimeString(), duration: dur, status: 'SUCCESS', icon: 'ph-file-text', chunks: res.total_chunks });
+        addActivityLog({ name: file.name, time: new Date().toLocaleTimeString(), duration: dur, status: 'SUCCESS', icon: 'file-text', chunks: res.total_chunks });
         setQuery(`Tell me about the document "${slug}".`);
       } else throw new Error(res.details[0]?.message || 'Index failed');
     } catch (err) {
@@ -187,7 +188,7 @@ const ChatView: React.FC = () => {
                 >
                   <div className="bezel-core px-5 py-4 flex items-center gap-3">
                     <div className="size-9 rounded-full bg-accent/[0.15] border border-accent/30 flex items-center justify-center text-accent group-hover:text-chalk group-hover:bg-white/[0.10] group-hover:border-white/20 transition-all duration-500 ease-spring">
-                      <i className={`${s.icon} text-[16px]`} />
+                      <AppIcon name={s.icon} size={16} />
                     </div>
                     <span className="text-[13px] text-chalk-dim group-hover:text-chalk transition-colors duration-500">
                       {s.label}
@@ -234,27 +235,37 @@ const ChatView: React.FC = () => {
               />
               <div className="flex items-center justify-between pt-2">
                 <div className="flex items-center gap-1">
-                  <ComposerIcon icon={isUploading ? 'ph-circle-notch' : 'ph-paperclip'}
-                                onClick={() => fileInputRef.current?.click()}
-                                spin={isUploading} title="Attach a document" />
-                  <ComposerIcon icon={isListening ? 'ph-microphone-slash' : 'ph-microphone'}
-                                onClick={toggleVoice}
-                                active={isListening} title="Voice input" />
+                  <CircularIconButton
+                    icon="plus"
+                    label={isUploading ? 'Uploading document' : 'Add document'}
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={isUploading}
+                    size="lg"
+                    tone="neutral"
+                    iconSize={21}
+                  />
+                  <CircularIconButton
+                    icon={isListening ? 'microphone-slash' : 'microphone'}
+                    label={isListening ? 'Stop voice input' : 'Start voice input'}
+                    onClick={toggleVoice}
+                    size="lg"
+                    tone={isListening ? 'active' : 'neutral'}
+                    iconSize={20}
+                  />
                   <span className="hidden md:inline text-[10px] tracking-[0.25em] uppercase font-medium text-chalk-mute ml-2">
                     Session {sessionId.slice(-6)}
                   </span>
                 </div>
 
-                <button
+                <CircularIconButton
+                  icon="paper-plane-right"
+                  label="Send message"
                   onClick={() => handleSend()}
                   disabled={!query.trim() || isThinking}
-                  className={`btn-magnetic ${(!query.trim() || isThinking) ? 'opacity-50 cursor-not-allowed' : ''}`}
-                >
-                  Send
-                  <span className="icon-island">
-                    <i className="ph-arrow-up-right text-[14px]" />
-                  </span>
-                </button>
+                  size="lg"
+                  tone="accent"
+                  iconSize={21}
+                />
               </div>
             </div>
           </div>
@@ -280,7 +291,7 @@ const MessageBubble: React.FC<{ msg: Message; onCopy: () => void }> = ({ msg, on
         isUser ? 'bg-white/[0.10] border-white/[0.20] text-chalk-dim'
                : 'bg-accent/20 border-accent/40 text-accent'
       }`}>
-        <i className={`${isUser ? 'ph-user' : 'ph-sparkle'} text-[14px]`} />
+        <AppIcon name={isUser ? 'user' : 'sparkle'} size={14} />
       </div>
 
       <div className={`flex-1 max-w-[88%] ${isUser ? 'text-right' : ''}`}>
@@ -290,7 +301,7 @@ const MessageBubble: React.FC<{ msg: Message; onCopy: () => void }> = ({ msg, on
               <span>Ragnarok · {msg.time}</span>
               {msg.grounded && (
                 <span className="px-2 py-0.5 rounded-full bg-accent-mint/10 text-accent-mint border border-accent-mint/20 normal-case tracking-tight text-[10px] font-medium flex items-center gap-1">
-                  <i className="ph-shield-check text-[11px]" />
+                  <AppIcon name="shield-check" size={11} />
                   Cited
                 </span>
               )}
@@ -316,7 +327,7 @@ const MessageBubble: React.FC<{ msg: Message; onCopy: () => void }> = ({ msg, on
         {!isUser && msg.sources && msg.sources.length > 0 && (
           <div className="mt-6">
             <div className="text-[10px] tracking-[0.25em] uppercase text-chalk-mute font-medium mb-3 flex items-center gap-2">
-              <i className="ph-bookmarks text-[12px]" />
+              <AppIcon name="bookmarks" size={12} />
               Sources <span className="text-chalk-ghost">·</span> {msg.sources.length}
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -325,9 +336,9 @@ const MessageBubble: React.FC<{ msg: Message; onCopy: () => void }> = ({ msg, on
               ))}
             </div>
             <div className="mt-4 flex gap-1">
-              <ComposerIcon icon="ph-copy" onClick={onCopy} title="Copy" />
-              <ComposerIcon icon="ph-thumbs-up" title="Helpful" />
-              <ComposerIcon icon="ph-thumbs-down" title="Not helpful" />
+              <CircularIconButton icon="copy" onClick={onCopy} label="Copy answer" size="sm" />
+              <CircularIconButton icon="thumbs-up" label="Mark answer helpful" size="sm" tone="mint" />
+              <CircularIconButton icon="thumbs-down" label="Mark answer not helpful" size="sm" tone="danger" />
             </div>
           </div>
         )}
@@ -344,7 +355,7 @@ const SourcePill: React.FC<{ source: Source }> = ({ source }) => {
       <div className="bezel-core px-4 py-3">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2 min-w-0 flex-1">
-            <i className="ph-file-text text-[14px] text-accent shrink-0" />
+            <AppIcon name="file-text" size={14} className="text-accent" />
             <span className="text-[12px] font-medium text-chalk truncate">{source.source}</span>
           </div>
           <span className="text-[10px] font-mono text-accent-mint shrink-0">{pct}%</span>
@@ -368,20 +379,5 @@ const SourcePill: React.FC<{ source: Source }> = ({ source }) => {
     </button>
   );
 };
-
-const ComposerIcon: React.FC<{ icon: string; onClick?: () => void; active?: boolean; spin?: boolean; title?: string }> =
-  ({ icon, onClick, active, spin, title }) => (
-  <button
-    onClick={onClick}
-    title={title}
-    className={`size-9 rounded-full flex items-center justify-center transition-all duration-500 ease-spring ${
-      active
-        ? 'bg-rose-400/20 border border-rose-400/30 text-rose-300'
-        : 'bg-white/[0.07] border border-white/[0.10] text-chalk-dim hover:text-chalk hover:bg-white/[0.12] hover:border-white/20'
-    }`}
-  >
-    <i className={`${icon} text-[16px] ${spin ? 'animate-spin' : ''}`} />
-  </button>
-);
 
 export default ChatView;

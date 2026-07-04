@@ -7,11 +7,12 @@ import { ToastProvider, IndexingProvider } from './context/GlobalContext';
 import ChatView from './views/ChatView';
 import IndexingView from './views/IndexingView';
 import ArchitectureView from './views/ArchitectureView';
+import { AppIcon } from './components/Icon';
 
 const NAV_ITEMS = [
-  { to: '/', label: 'Chat',         icon: 'ph-chat-circle-text' },
-  { to: '/index', label: 'Indexing',icon: 'ph-stack' },
-  { to: '/architecture', label: 'Architecture', icon: 'ph-graph' },
+  { to: '/', label: 'Chat', icon: 'chat-circle-text' },
+  { to: '/index', label: 'Indexing', icon: 'stack' },
+  { to: '/architecture', label: 'Architecture', icon: 'graph' },
 ] as const;
 
 const FloatingNav: React.FC = () => {
@@ -45,7 +46,7 @@ const FloatingNav: React.FC = () => {
                   active ? 'text-ink' : 'text-chalk-dim hover:text-chalk'
                 }`}
               >
-                <i className={`${item.icon} text-[16px] ${active ? 'text-ink' : 'text-chalk-dim'}`} />
+                <AppIcon name={item.icon} size={16} className={active ? 'text-ink' : 'text-chalk-dim'} />
                 {item.label}
               </span>
               {active && (
@@ -66,9 +67,9 @@ const FloatingNav: React.FC = () => {
           className="ml-2 flex items-center gap-1.5 px-3 py-2 rounded-full text-[11px] font-medium text-chalk-dim hover:text-chalk transition-colors duration-500 ease-spring border border-white/[0.06]"
           title="View source"
         >
-          <i className="ph-github-logo text-[14px]" />
+          <AppIcon name="github-logo" size={14} />
           <span className="hidden lg:inline">Source</span>
-          <i className="ph-arrow-up-right text-[11px] opacity-60" />
+          <AppIcon name="arrow-up-right" size={11} />
         </a>
       </nav>
 
@@ -113,7 +114,7 @@ const FloatingNav: React.FC = () => {
                   to={item.to}
                   className="flex items-center gap-4 px-8 py-4 rounded-full text-2xl font-medium tracking-editorial text-chalk"
                 >
-                  <i className={`${item.icon} text-2xl text-accent`} />
+                  <AppIcon name={item.icon} size={24} className="text-accent" />
                   {item.label}
                 </NavLink>
               </motion.div>

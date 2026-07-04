@@ -46,6 +46,37 @@ class TestChunkText:
         assert "start_char" in chunks[0]
         assert "end_char" in chunks[0]
 
+    def test_chunk_metadata_matches_cleaned_text_slice(self):
+        """Chunk offsets should point to the exact cleaned text slice."""
+        text = "Intro paragraph.\n\nSecond paragraph with more detail. " * 8
+        cleaned = clean_text(text)
+        chunks = chunk_text(text, chunk_size=90, overlap=15)
+
+        assert len(chunks) > 1
+        for idx, chunk in enumerate(chunks):
+            assert chunk["chunk_index"] == idx
+            assert cleaned[chunk["start_char"]:chunk["end_char"]] == chunk["text"]
+            assert chunk["text"] == chunk["text"].strip()
+
+    def test_chunk_overlap_is_clamped_and_progresses(self):
+        """Unsafe overlap values should not create an infinite loop."""
+        text = "word " * 120
+        chunks = chunk_text(text, chunk_size=80, overlap=80)
+
+        assert len(chunks) > 1
+        starts = [chunk["start_char"] for chunk in chunks]
+        assert starts == sorted(starts)
+        assert len(starts) == len(set(starts))
+
+    def test_chunk_prefers_natural_boundaries(self):
+        """Chunks should avoid leading/trailing whitespace around natural breaks."""
+        text = "Alpha sentence one. Alpha sentence two.\n\nBeta sentence one. Beta sentence two."
+        chunks = chunk_text(text, chunk_size=48, overlap=0)
+
+        assert len(chunks) >= 2
+        assert all(chunk["text"] == chunk["text"].strip() for chunk in chunks)
+        assert chunks[0]["text"].endswith(".")
+
 
 class TestCleanText:
     """Tests for text cleaning functionality."""
