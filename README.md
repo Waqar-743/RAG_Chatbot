@@ -2,6 +2,10 @@
 
 A Retrieval-Augmented Generation chatbot that answers from indexed documents and returns source citations.
 
+[**Open the live application**](https://rag-chatbot-waqar.onrender.com) · [API documentation](https://rag-chatbot-api-waqar.onrender.com/docs) · [Backend health](https://rag-chatbot-api-waqar.onrender.com/api/v1/health)
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/Waqar-743/RAG_Chatbot)
+
 ## Production architecture
 
 | Layer | Provider | Configuration |
@@ -15,6 +19,8 @@ A Retrieval-Augmented Generation chatbot that answers from indexed documents and
 Both Render services are declared in `render.yaml`. The frontend receives the backend URL through `VITE_API_URL`, and the backend allows the Render frontend through CORS. Pushes to `main` deploy after CI passes.
 
 ## Deploy on Render
+
+Click the **Deploy to Render** button above for a one-click Blueprint deployment, or configure it manually:
 
 1. Push this repository's `main` branch to GitHub.
 2. In Render, choose **New → Blueprint** and connect `Waqar-743/RAG_Chatbot`.

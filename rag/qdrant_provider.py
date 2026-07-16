@@ -45,7 +45,7 @@ def get_qdrant_client() -> QdrantClient:
             logger.error("%s Error: %s", message, e)
             raise RuntimeError(message) from e
 
-    if os.environ.get("VERCEL") or os.environ.get("RENDER"):
+    if os.environ.get("RENDER"):
         raise RuntimeError(
             "QDRANT_URL and QDRANT_API_KEY are required in production; "
             "local Qdrant fallback is only available during development."

@@ -48,7 +48,7 @@ def setup_logging(
 
     # File handler is skipped on read-only production filesystems.
     import os
-    if not os.environ.get("VERCEL"):
+    if not os.environ.get("RENDER"):
         try:
             if log_file is None:
                 logs_dir = Path("logs")
