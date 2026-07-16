@@ -16,7 +16,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
     """
     Application lifespan manager.
     Handles startup and shutdown events.
-    NOTE: Kept lightweight for Vercel cold-start performance.
+    NOTE: Kept lightweight so container startup and health checks stay fast.
     RAG components use lazy-loading per request.
     """
     yield
@@ -47,23 +47,22 @@ app = FastAPI(
     redoc_url="/redoc"
 )
 
-# Configure CORS — allow Vercel frontend, GitHub Pages, and local dev
+# Configure CORS for the Render frontend and local development.
 _BASE_ORIGINS = [
-    "https://waqar-743.github.io",           # GitHub Pages frontend
-    "http://localhost:3000",                   # local Vite dev server
+    "https://rag-chatbot-waqar.onrender.com",
+    "http://localhost:3000",
     "http://localhost:5173",
-    "https://*.vercel.app",                   # any Vercel preview/prod URL
 ]
 
 # Accept extra origins from env var (comma-separated)
-# e.g. CORS_ORIGINS=https://rag-chatbot-frontend.vercel.app
+# e.g. CORS_ORIGINS=https://your-custom-domain.example
 _extra = os.environ.get("CORS_ORIGINS", "")
 _ALLOWED_ORIGINS = _BASE_ORIGINS + [o.strip() for o in _extra.split(",") if o.strip()]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_ALLOWED_ORIGINS,
-    allow_origin_regex=r"https://.*\.vercel\.app",  # catch all Vercel domains
+    allow_origin_regex=r"https://.*\.onrender\.com",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

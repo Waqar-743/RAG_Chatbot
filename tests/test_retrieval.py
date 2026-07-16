@@ -13,17 +13,13 @@ class TestRAGRetriever:
     @pytest.fixture
     def mock_retriever(self):
         """Create a mocked RAGRetriever."""
-        with patch('rag.retrieval.QdrantClient') as mock_qdrant, \
-             patch('rag.retrieval.AsyncIOMotorClient') as mock_mongo, \
+        with patch('rag.retrieval.get_qdrant_client') as mock_qdrant, \
+             patch('rag.retrieval.get_mongo', return_value=(None, None)), \
              patch('rag.retrieval.AsyncOpenAI') as mock_openai:
             
             # Mock Qdrant
             mock_qdrant_instance = MagicMock()
             mock_qdrant.return_value = mock_qdrant_instance
-            
-            # Mock MongoDB
-            mock_mongo_instance = MagicMock()
-            mock_mongo.return_value = mock_mongo_instance
             
             # Mock OpenAI
             mock_openai_instance = MagicMock()

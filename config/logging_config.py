@@ -46,7 +46,7 @@ def setup_logging(
     console_handler.setFormatter(log_format)
     logger.addHandler(console_handler)
 
-    # File handler — skipped on read-only filesystems (e.g. Vercel serverless)
+    # File handler is skipped on read-only production filesystems.
     import os
     if not os.environ.get("VERCEL"):
         try:

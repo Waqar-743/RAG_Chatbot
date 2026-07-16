@@ -1,37 +1,23 @@
-# ============================================================
-# Render Blueprint — one-click deploy of the FastAPI backend.
-#
-# Usage:
-#   1. Push this repo to GitHub.
-#   2. Go to https://dashboard.render.com → New → Blueprint
-#      and connect this repo. Render auto-detects render.yaml.
-#   3. Fill in the four secrets prompted (see sync: false below).
-#   4. After deploy, copy the service URL (e.g. https://rag-chatbot-api.onrender.com)
-#      and add it as VITE_API_URL secret in your GitHub repo settings.
-#
-# Free Qdrant Cloud:  https://cloud.qdrant.io  (1 GB free)
-# Free MongoDB Atlas: https://cloud.mongodb.com (M0 cluster, 512 MB free)
-# OpenRouter API key: https://openrouter.ai/keys
-# ============================================================
-
 services:
   - type: web
-    name: rag-chatbot-api
+    name: rag-chatbot-api-waqar
     runtime: docker
-    plan: free                      # bump to "starter" for always-on
+    plan: free
     region: oregon
+    branch: main
     dockerfilePath: ./Dockerfile
     healthCheckPath: /api/v1/health
-    autoDeploy: true
+    autoDeployTrigger: checksPass
     envVars:
       - key: DEBUG
         value: "false"
       - key: LOG_LEVEL
         value: INFO
+      - key: CORS_ORIGINS
+        value: https://rag-chatbot-waqar.onrender.com
 
-      # OpenRouter — drives both LLM and embeddings
       - key: OPENROUTER_API_KEY
-        sync: false                 # prompted on deploy, never logged
+        sync: false
       - key: OPENROUTER_BASE_URL
         value: https://openrouter.ai/api/v1
       - key: LLM_MODEL
@@ -39,7 +25,6 @@ services:
       - key: EMBEDDING_MODEL
         value: openai/text-embedding-3-small
 
-      # Qdrant Cloud (vector store)
       - key: QDRANT_URL
         sync: false
       - key: QDRANT_API_KEY
@@ -47,13 +32,11 @@ services:
       - key: QDRANT_COLLECTION
         value: rag_documents
 
-      # MongoDB Atlas (chat history / metadata)
-      - key: MONGO_URI
-        sync: false
+      # MongoDB is optional. Add MONGO_URI in the Render dashboard to persist
+      # chat history and metadata; Qdrant indexing/query works without it.
       - key: MONGO_DB_NAME
         value: rag_db
 
-      # RAG tuning defaults
       - key: TOP_K
         value: "5"
       - key: SIMILARITY_THRESHOLD
@@ -66,3 +49,28 @@ services:
         value: "0.7"
       - key: MAX_TOKENS
         value: "2048"
+
+  - type: web
+    name: rag-chatbot-waqar
+    runtime: static
+    branch: main
+    buildCommand: cd frontend && npm ci && npm run build
+    staticPublishPath: ./frontend/dist
+    autoDeployTrigger: checksPass
+    envVars:
+      - key: VITE_API_URL
+        value: https://rag-chatbot-api-waqar.onrender.com
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    headers:
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
+      - path: /*
+        name: Referrer-Policy
+        value: strict-origin-when-cross-origin

@@ -1,61 +1,112 @@
+"""Destructively clear application data from Qdrant and MongoDB."""
 
-import asyncio
+from __future__ import annotations
+
+import argparse
 import os
 import sys
+from typing import List
 
-# Add the project root to the python path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from config.settings import settings
-from config.constants import DOCUMENTS_COLLECTION, CHAT_HISTORY_COLLECTION, METADATA_COLLECTION
-from qdrant_client import QdrantClient
-from qdrant_client.models import FilterSelector, Filter
 from pymongo import MongoClient
+from qdrant_client import QdrantClient
 
-async def clear_all_data():
-    print("🧹 Starting data cleanup...")
-    
-    # 1. Clear MongoDB Collections
-    try:
-        print(f"Connecting to MongoDB: {settings.mongo_db_name}...")
-        mongo_client = MongoClient(settings.mongo_uri)
-        db = mongo_client[settings.mongo_db_name]
-        
-        # Clear collections
-        result_docs = db[DOCUMENTS_COLLECTION].delete_many({})
-        result_history = db[CHAT_HISTORY_COLLECTION].delete_many({})
-        result_meta = db[METADATA_COLLECTION].delete_many({})
-        
-        print(f"✅ MongoDB: Deleted {result_docs.deleted_count} documents")
-        print(f"✅ MongoDB: Deleted {result_history.deleted_count} history entries")
-        print(f"✅ MongoDB: Deleted {result_meta.deleted_count} metadata entries")
-        
-        mongo_client.close()
-    except Exception as e:
-        print(f"❌ Error clearing MongoDB: {e}")
+from config.constants import (
+    CHAT_HISTORY_COLLECTION,
+    DOCUMENTS_COLLECTION,
+    METADATA_COLLECTION,
+)
+from config.settings import settings
 
-    # 2. Clear Qdrant Collection
+
+def clear_mongo() -> bool:
+    """Delete every document from the application's MongoDB collections."""
+    if not settings.mongo_uri:
+        print("MongoDB: skipped (MONGO_URI is not configured)")
+        return True
+
+    client = MongoClient(settings.mongo_uri, serverSelectionTimeoutMS=10_000)
     try:
-        print(f"Connecting to Qdrant: {settings.qdrant_url}...")
-        qdrant_client = QdrantClient(
-            url=settings.qdrant_url,
-            api_key=settings.qdrant_api_key
-        )
-        
-        # Delete all points from the collection
-        qdrant_client.delete(
-            collection_name=settings.qdrant_collection,
-            points_selector=FilterSelector(
-                filter=Filter() # Empty filter = matches all
+        client.admin.command("ping")
+        database = client[settings.mongo_db_name]
+        for collection in (
+            DOCUMENTS_COLLECTION,
+            CHAT_HISTORY_COLLECTION,
+            METADATA_COLLECTION,
+        ):
+            deleted = database[collection].delete_many({}).deleted_count
+            remaining = database[collection].count_documents({})
+            if remaining:
+                raise RuntimeError(
+                    f"MongoDB collection {collection!r} still has {remaining} documents"
+                )
+            print(f"MongoDB {collection}: deleted {deleted}; remaining 0")
+        return True
+    except Exception as exc:
+        print(f"MongoDB cleanup could not be verified: {exc}")
+        return False
+    finally:
+        client.close()
+
+
+def clear_qdrant() -> bool:
+    """Delete the entire configured collection and verify it is absent."""
+    if not settings.qdrant_url or not settings.qdrant_api_key:
+        print("Qdrant: skipped (QDRANT_URL or QDRANT_API_KEY is missing)")
+        return False
+
+    client = QdrantClient(
+        url=settings.qdrant_url,
+        api_key=settings.qdrant_api_key,
+        timeout=30,
+    )
+    try:
+        names: List[str] = [item.name for item in client.get_collections().collections]
+        if settings.qdrant_collection in names:
+            points = client.get_collection(settings.qdrant_collection).points_count or 0
+            client.delete_collection(settings.qdrant_collection)
+            print(
+                f"Qdrant {settings.qdrant_collection}: deleted collection "
+                f"containing {points} points"
             )
-        )
-        print(f"✅ Qdrant: Cleared collection '{settings.qdrant_collection}'")
-        
-        qdrant_client.close()
-    except Exception as e:
-        print(f"❌ Error clearing Qdrant: {e}")
+        else:
+            print(f"Qdrant {settings.qdrant_collection}: already absent (0 points)")
 
-    print("✨ Cleanup complete!")
+        remaining = [item.name for item in client.get_collections().collections]
+        if settings.qdrant_collection in remaining:
+            raise RuntimeError("collection still exists after deletion")
+        print("Qdrant cleanup verified")
+        return True
+    except Exception as exc:
+        print(f"Qdrant cleanup could not be verified: {exc}")
+        return False
+    finally:
+        client.close()
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--yes",
+        action="store_true",
+        help="Confirm permanent deletion without an interactive prompt",
+    )
+    parser.add_argument("--skip-mongo", action="store_true")
+    parser.add_argument("--skip-qdrant", action="store_true")
+    args = parser.parse_args()
+
+    if not args.yes:
+        parser.error("refusing destructive cleanup without --yes")
+
+    results = []
+    if not args.skip_mongo:
+        results.append(clear_mongo())
+    if not args.skip_qdrant:
+        results.append(clear_qdrant())
+
+    return 0 if results and all(results) else 1
+
 
 if __name__ == "__main__":
-    asyncio.run(clear_all_data())
+    raise SystemExit(main())

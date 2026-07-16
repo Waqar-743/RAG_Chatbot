@@ -18,7 +18,6 @@ import time
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from motor.motor_asyncio import AsyncIOMotorClient
 from openai import (
     APIConnectionError,
     APIError,
@@ -49,6 +48,7 @@ from config.constants import (
 from config.logging_config import get_logger
 from config.settings import settings
 from rag.qdrant_provider import get_qdrant_client
+from rag.mongo_provider import get_mongo
 from rag.rerank import mmr_rerank
 from rag.utils import truncate_text
 
@@ -76,14 +76,14 @@ class RAGRetriever:
     def _initialize_clients(self) -> None:
         logger.info("Initializing RAG Retriever clients…")
         self.qdrant_client = get_qdrant_client()
-        self.mongo_client = AsyncIOMotorClient(settings.mongo_uri)
-        self.mongo_db = self.mongo_client[settings.mongo_db_name]
+        # Mongo is optional (chat history only)
+        self.mongo_client, self.mongo_db = get_mongo()
         self.openai_client = AsyncOpenAI(
             api_key=settings.openrouter_api_key,
             base_url=settings.openrouter_base_url,
             timeout=LLM_TIMEOUT,
         )
-        logger.info("Retriever clients ready")
+        logger.info("Retriever clients ready (mongo=%s)", self.mongo_db is not None)
 
     # ------------------------------------------------------------------
     # External calls (with retry)
@@ -431,6 +431,8 @@ class RAGRetriever:
     async def _store_chat_history(
         self, session_id: str, query: str, result: Dict[str, Any]
     ) -> None:
+        if self.mongo_db is None:
+            return
         try:
             await self.mongo_db[CHAT_HISTORY_COLLECTION].insert_one(
                 {
@@ -450,6 +452,8 @@ class RAGRetriever:
     async def get_chat_history(
         self, session_id: str, limit: int = 10
     ) -> List[Dict[str, Any]]:
+        if self.mongo_db is None:
+            return []
         try:
             cursor = (
                 self.mongo_db[CHAT_HISTORY_COLLECTION]
@@ -477,7 +481,8 @@ class RAGRetriever:
     # ------------------------------------------------------------------
     def close(self) -> None:
         try:
-            self.mongo_client.close()
+            if self.mongo_client is not None:
+                self.mongo_client.close()
             logger.info("Retriever connections closed")
         except Exception as e:
             logger.error("close.error %s", e)

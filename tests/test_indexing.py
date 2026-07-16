@@ -123,18 +123,14 @@ class TestRAGIndexer:
     @pytest.fixture
     def mock_indexer(self):
         """Create a mocked RAGIndexer."""
-        with patch('rag.indexing.QdrantClient') as mock_qdrant, \
-             patch('rag.indexing.AsyncIOMotorClient') as mock_mongo, \
+        with patch('rag.indexing.get_qdrant_client') as mock_qdrant, \
+             patch('rag.indexing.get_mongo', return_value=(None, None)), \
              patch('rag.indexing.AsyncOpenAI') as mock_openai:
             
             # Mock Qdrant
             mock_qdrant_instance = MagicMock()
             mock_qdrant_instance.get_collections.return_value = MagicMock(collections=[])
             mock_qdrant.return_value = mock_qdrant_instance
-            
-            # Mock MongoDB
-            mock_mongo_instance = MagicMock()
-            mock_mongo.return_value = mock_mongo_instance
             
             # Mock OpenAI
             mock_openai_instance = MagicMock()

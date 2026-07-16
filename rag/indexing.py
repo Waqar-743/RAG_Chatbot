@@ -22,8 +22,6 @@ from qdrant_client.models import (
     VectorParams,
     models,
 )
-from pymongo import MongoClient
-from motor.motor_asyncio import AsyncIOMotorClient
 from tenacity import (
     AsyncRetrying,
     retry_if_exception_type,
@@ -41,6 +39,7 @@ from config.constants import (
 )
 from config.logging_config import get_logger
 from rag.qdrant_provider import get_qdrant_client
+from rag.mongo_provider import get_mongo
 from rag.utils import (
     chunk_text, 
     generate_document_id, 
@@ -77,10 +76,9 @@ class RAGIndexer:
 
         # Shared Qdrant client for vector storage
         self.qdrant_client = get_qdrant_client()
-        
-        # MongoDB async client for metadata
-        self.mongo_client = AsyncIOMotorClient(settings.mongo_uri)
-        self.mongo_db = self.mongo_client[settings.mongo_db_name]
+
+        # MongoDB is optional (metadata only); dead cluster must not block RAG
+        self.mongo_client, self.mongo_db = get_mongo()
         
         # OpenAI client (configured for OpenRouter)
         self.openai_client = AsyncOpenAI(
@@ -89,7 +87,7 @@ class RAGIndexer:
             timeout=EMBEDDING_TIMEOUT
         )
         
-        logger.info("All clients initialized successfully")
+        logger.info("Indexer clients initialized (mongo=%s)", self.mongo_db is not None)
     
     def _initialize_collections(self):
         """Initialize Qdrant collection if it doesn't exist."""
@@ -312,7 +310,10 @@ class RAGIndexer:
         chunk_count: int,
         metadata: Dict
     ):
-        """Store document metadata in MongoDB."""
+        """Store document metadata in MongoDB (no-op if Mongo is unavailable)."""
+        if self.mongo_db is None:
+            logger.debug("Skipping metadata store for %s — Mongo unavailable", source)
+            return
         try:
             doc_metadata = {
                 "document_id": document_id,
@@ -366,10 +367,14 @@ class RAGIndexer:
                 )
             )
             
-            # Delete from MongoDB
-            await self.mongo_db[DOCUMENTS_COLLECTION].delete_one(
-                {"document_id": document_id}
-            )
+            # Delete from MongoDB (optional)
+            if self.mongo_db is not None:
+                try:
+                    await self.mongo_db[DOCUMENTS_COLLECTION].delete_one(
+                        {"document_id": document_id}
+                    )
+                except Exception as mongo_err:
+                    logger.warning("Mongo delete skipped: %s", mongo_err)
             
             logger.info(f"Successfully deleted document: {document_id}")
             return {"status": "success", "document_id": document_id}
@@ -383,13 +388,20 @@ class RAGIndexer:
         try:
             # Qdrant collection info
             collection_info = self.qdrant_client.get_collection(settings.qdrant_collection)
-            
-            # MongoDB document count
-            doc_count = await self.mongo_db[DOCUMENTS_COLLECTION].count_documents({})
+            vector_count = collection_info.points_count or 0
+
+            # MongoDB document count (optional)
+            doc_count = 0
+            if self.mongo_db is not None:
+                try:
+                    doc_count = await self.mongo_db[DOCUMENTS_COLLECTION].count_documents({})
+                except Exception as mongo_err:
+                    logger.warning("Mongo document count failed: %s", mongo_err)
+                    doc_count = 0
             
             return {
                 "collection_name": settings.qdrant_collection,
-                "vector_count": collection_info.points_count,
+                "vector_count": vector_count,
                 "document_count": doc_count,
                 "vector_dimension": VECTOR_DIMENSION,
                 "status": "healthy"
@@ -397,12 +409,20 @@ class RAGIndexer:
             
         except Exception as e:
             logger.error(f"Error getting collection stats: {e}")
-            return {"status": "error", "message": str(e)}
+            return {
+                "collection_name": settings.qdrant_collection,
+                "vector_count": 0,
+                "document_count": 0,
+                "vector_dimension": VECTOR_DIMENSION,
+                "status": "error",
+                "message": str(e),
+            }
     
     def close(self):
         """Close all client connections."""
         try:
-            self.mongo_client.close()
+            if self.mongo_client is not None:
+                self.mongo_client.close()
             logger.info("All connections closed")
         except Exception as e:
             logger.error(f"Error closing connections: {e}")

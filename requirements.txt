@@ -1,8 +1,8 @@
 # ============================================================
-# RAG Chatbot — Production Requirements (Vercel-compatible)
+# RAG Chatbot — Production Requirements
 # 
-# llama-index is intentionally excluded: it is 200 MB+ and
-# would exceed Vercel's 250 MB serverless limit.
+# llama-index is intentionally excluded because the application uses the
+# direct Qdrant and OpenAI clients below.
 # The RAG pipeline uses qdrant-client + openai directly.
 #
 # For local dev / Docker: use requirements-full.txt instead
@@ -12,7 +12,6 @@
 fastapi==0.115.0
 uvicorn[standard]==0.30.6
 python-multipart==0.0.9
-mangum==0.17.0
 
 # Config
 python-dotenv==1.0.1

@@ -18,10 +18,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements first for caching
-# Use requirements-full.txt for Docker (includes llama-index + heavy ML deps)
-# Vercel uses the slim requirements.txt at root
-COPY requirements-full.txt requirements.txt
+# Copy the production requirements first for caching. The application uses the
+# direct Qdrant/OpenAI pipeline, so the large llama-index dependency set is not
+# needed in the Render image.
+COPY requirements.txt requirements.txt
 
 # Install Python dependencies
 RUN pip install --no-cache-dir --upgrade pip && \

@@ -10,9 +10,9 @@ jobs:
     runs-on: ubuntu-latest
     env:
       OPENROUTER_API_KEY: dummy
-      QDRANT_API_KEY: dummy
-      QDRANT_URL: http://127.0.0.1:6333
-      MONGO_URI: mongodb://localhost:27017
+      QDRANT_API_KEY: ""
+      QDRANT_URL: ""
+      MONGO_URI: ""
       MONGO_DB_NAME: rag_db
     steps:
       - name: Checkout
@@ -55,4 +55,4 @@ jobs:
       - name: Build
         run: npm run build
         env:
-          VITE_API_URL: https://rag-chatbot-api-ivory.vercel.app
+          VITE_API_URL: https://rag-chatbot-api-waqar.onrender.com
