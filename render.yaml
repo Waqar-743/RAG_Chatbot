@@ -54,8 +54,9 @@ services:
     name: rag-chatbot-waqar
     runtime: static
     branch: main
-    buildCommand: cd frontend && npm ci && npm run build
-    staticPublishPath: ./frontend/dist
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    staticPublishPath: ./dist
     autoDeployTrigger: checksPass
     envVars:
       - key: VITE_API_URL
